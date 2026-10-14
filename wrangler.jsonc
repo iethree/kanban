@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kanban",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  // Requires the infopanel.org zone to be on the same Cloudflare account.
+  // Wrangler creates the DNS record and certificate on deploy.
+  "routes": [{ "pattern": "kanban.infopanel.org", "custom_domain": true }],
+  // The frontend is bundled by Bun into ./dist before every dev/deploy.
+  "build": {
+    "command": "bun run build:client",
+    "watch_dir": ["src/client", "src/shared"]
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/llms.txt"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "PROJECTS", "class_name": "ProjectRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectRoom"] }]
+}

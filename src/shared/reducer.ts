@@ -1,0 +1,157 @@
+import type { Card, Column, Doc, Op, ProjectDocument } from "./types";
+import { LIMITS } from "./types";
+
+export function emptyDoc(): Doc {
+  return {
+    initialized: false,
+    title: "",
+    description: "",
+    columns: [],
+    cards: {},
+    documentIds: [],
+    documents: {},
+    createdAt: 0,
+    updatedAt: 0,
+  };
+}
+
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, Math.floor(n)));
+
+function insertAt<T>(list: T[], item: T, index: number | undefined): T[] {
+  const next = list.slice();
+  next.splice(index === undefined ? next.length : clamp(index, 0, next.length), 0, item);
+  return next;
+}
+
+function findColumnOfCard(doc: Doc, cardId: string): Column | undefined {
+  return doc.columns.find((c) => c.cardIds.includes(cardId));
+}
+
+/**
+ * Applies an operation to a document, returning a new document (or the same
+ * reference if the op was a no-op). Pure and deterministic so the server and
+ * every client converge on the same state. Ops are idempotent where possible,
+ * so a client may safely resend unacknowledged ops after reconnecting.
+ */
+export function applyOp(doc: Doc, op: Op, now: number): Doc {
+  if (op.type === "init") {
+    if (doc.initialized) return doc;
+    return {
+      initialized: true,
+      title: op.title,
+      description: op.description,
+      columns: op.columns.map((c) => ({ id: c.id, name: c.name, cardIds: [] })),
+      cards: {},
+      documentIds: [],
+      documents: {},
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  if (!doc.initialized) return doc;
+
+  const touch = (next: Partial<Doc>): Doc => ({ ...doc, ...next, updatedAt: now });
+
+  switch (op.type) {
+    case "updateProject": {
+      const next: Partial<Doc> = {};
+      if (op.title !== undefined) next.title = op.title;
+      if (op.description !== undefined) next.description = op.description;
+      return touch(next);
+    }
+
+    case "addColumn": {
+      if (doc.columns.length >= LIMITS.columns) return doc;
+      if (doc.columns.some((c) => c.id === op.id)) return doc;
+      return touch({ columns: insertAt(doc.columns, { id: op.id, name: op.name, cardIds: [] }, op.index) });
+    }
+
+    case "renameColumn": {
+      if (!doc.columns.some((c) => c.id === op.id)) return doc;
+      return touch({ columns: doc.columns.map((c) => (c.id === op.id ? { ...c, name: op.name } : c)) });
+    }
+
+    case "moveColumn": {
+      const col = doc.columns.find((c) => c.id === op.id);
+      if (!col) return doc;
+      const rest = doc.columns.filter((c) => c.id !== op.id);
+      return touch({ columns: insertAt(rest, col, op.index) });
+    }
+
+    case "deleteColumn": {
+      const col = doc.columns.find((c) => c.id === op.id);
+      if (!col) return doc;
+      const cards = { ...doc.cards };
+      for (const id of col.cardIds) delete cards[id];
+      return touch({ columns: doc.columns.filter((c) => c.id !== op.id), cards });
+    }
+
+    case "addCard": {
+      if (doc.cards[op.card.id]) return doc;
+      if (Object.keys(doc.cards).length >= LIMITS.cards) return doc;
+      const col = doc.columns.find((c) => c.id === op.columnId);
+      if (!col) return doc;
+      const card: Card = { ...op.card, createdAt: now, updatedAt: now };
+      return touch({
+        cards: { ...doc.cards, [card.id]: card },
+        columns: doc.columns.map((c) => (c === col ? { ...c, cardIds: insertAt(c.cardIds, card.id, op.index) } : c)),
+      });
+    }
+
+    case "updateCard": {
+      const card = doc.cards[op.id];
+      if (!card) return doc;
+      return touch({ cards: { ...doc.cards, [op.id]: { ...card, ...op.patch, updatedAt: now } } });
+    }
+
+    case "moveCard": {
+      const card = doc.cards[op.id];
+      const from = findColumnOfCard(doc, op.id);
+      const to = doc.columns.find((c) => c.id === op.columnId);
+      if (!card || !from || !to) return doc;
+      const currentIndex = from.cardIds.indexOf(op.id);
+      if (from === to && currentIndex === clamp(op.index, 0, from.cardIds.length - 1)) return doc;
+      const columns = doc.columns.map((c) => {
+        let ids = c.cardIds;
+        if (c === from) ids = ids.filter((id) => id !== op.id);
+        if (c === to) ids = insertAt(ids, op.id, op.index);
+        return ids === c.cardIds ? c : { ...c, cardIds: ids };
+      });
+      const cards = from === to ? doc.cards : { ...doc.cards, [op.id]: { ...card, updatedAt: now } };
+      return touch({ columns, cards });
+    }
+
+    case "deleteCard": {
+      if (!doc.cards[op.id]) return doc;
+      const cards = { ...doc.cards };
+      delete cards[op.id];
+      return touch({
+        cards,
+        columns: doc.columns.map((c) => (c.cardIds.includes(op.id) ? { ...c, cardIds: c.cardIds.filter((id) => id !== op.id) } : c)),
+      });
+    }
+
+    case "addDocument": {
+      if (doc.documents[op.document.id]) return doc;
+      if (doc.documentIds.length >= LIMITS.documents) return doc;
+      const document: ProjectDocument = { ...op.document, createdAt: now, updatedAt: now };
+      return touch({
+        documents: { ...doc.documents, [document.id]: document },
+        documentIds: [...doc.documentIds, document.id],
+      });
+    }
+
+    case "updateDocument": {
+      const document = doc.documents[op.id];
+      if (!document) return doc;
+      return touch({ documents: { ...doc.documents, [op.id]: { ...document, ...op.patch, updatedAt: now } } });
+    }
+
+    case "deleteDocument": {
+      if (!doc.documents[op.id]) return doc;
+      const documents = { ...doc.documents };
+      delete documents[op.id];
+      return touch({ documents, documentIds: doc.documentIds.filter((id) => id !== op.id) });
+    }
+  }
+}
