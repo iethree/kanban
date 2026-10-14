@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { applyOp, emptyDoc } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
 import { exportDoc, importDoc, newId, sanitizeOp } from "../shared/validate";
+import { projectPath } from "../shared/urls";
 import { documentMarkdown, projectLlmsTxt } from "./llms";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
@@ -204,7 +205,9 @@ export class ProjectRoom extends DurableObject<Env> {
     }
 
     const results = ops.map((op) => ({ type: op.type, id: opTargetId(op), changed: this.commit(op, `http-${newId()}`) }));
-    return Response.json({ ok: true, version: this.version, results });
+    const { origin, pathname } = new URL(request.url);
+    const url = `${origin}${projectPath(pathname.split("/")[3]!, this.load().title)}`;
+    return Response.json({ ok: true, version: this.version, url, results });
   }
 
   /** Fills in conveniences for HTTP callers. Returns an error message for unresolvable references. */

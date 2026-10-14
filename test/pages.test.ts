@@ -3,6 +3,7 @@ import { parseProjectPath } from "../src/shared/urls";
 import { agentLinks, prefersMarkdown, rewriteProjectPage } from "../src/worker/pages";
 
 const ID = "3c5f5d83-d805-4e41-bba5-7a69e0ea588b";
+const SHORT = "1pv7XjjQP9gM4BRBqypgrb";
 const ORIGIN = "https://kanban.example";
 const SHELL = `<!doctype html><html><head><title>Kanban</title><link rel="alternate" type="text/markdown" href="/llms.txt" /></head><body><div id="root"><section>generic</section></div></body></html>`;
 
@@ -30,17 +31,17 @@ describe("rewriteProjectPage", () => {
 
   test("board page points at the project's llms.txt and JSON", async () => {
     const { html, headers } = await render(`/p/my-board/${ID}`);
-    expect(html).toContain(`href="${ORIGIN}/api/p/${ID}/llms.txt"`);
-    expect(html).toContain(`type="application/json" href="${ORIGIN}/api/p/${ID}"`);
+    expect(html).toContain(`href="${ORIGIN}/api/p/${SHORT}/llms.txt"`);
+    expect(html).toContain(`type="application/json" href="${ORIGIN}/api/p/${SHORT}"`);
     expect(html).not.toContain('href="/llms.txt"');
     expect(html).not.toContain("generic");
     expect(html).toContain("you don't need a browser");
-    expect(headers.get("Link")).toContain(`/api/p/${ID}/llms.txt`);
+    expect(headers.get("Link")).toContain(`/api/p/${SHORT}/llms.txt`);
   });
 
   test("document page also links the document's markdown", async () => {
     const { html } = await render(`/p/my-board/${ID}/docs/abc123`);
-    expect(html).toContain(`${ORIGIN}/api/p/${ID}/documents/abc123`);
+    expect(html).toContain(`${ORIGIN}/api/p/${SHORT}/documents/abc123`);
   });
 
   test("ids from the URL are validated, never echoed raw", async () => {

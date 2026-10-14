@@ -1,13 +1,16 @@
 # kanban
 
 A small real-time kanban board on Cloudflare Workers. No accounts: create a project, share the
-`/p/<name>/<uuid>` link, and anyone with it can view and edit live. Only the UUID matters; the name is a
-slug of the project title that follows renames, and `/p/<uuid>` works too. Each project has a board and a flat list of
+`/p/<name>/<id>` link, and anyone with it can view and edit live. Only the id matters; the name is a
+slug of the project title that follows renames, and `/p/<id>` works too.
+
+Project ids are UUIDs internally (they name the Durable Object). URLs show a 22-character, case-sensitive
+base62 encoding of the same 128 bits (`src/shared/ids.ts`), and every page and API route accepts either form. Each project has a board and a flat list of
 Markdown documents, and agents can work with it over a plain HTTP API.
 
 ## For agents
 
-`/llms.txt` explains the app and API. `/api/p/<uuid>/llms.txt` is generated per project: it includes
+`/llms.txt` explains the app and API. `/api/p/<id>/llms.txt` is generated per project: it includes
 the current board with ids, copy-pasteable `curl` commands, and a working agreement for tracking work
 on the board. The project menu's **Copy agent instructions** puts a ready-made prompt on the clipboard.
 
@@ -18,10 +21,10 @@ with the project's API URLs (React replaces it on load), and requesting a page w
 
 | Method | Path | |
 | --- | --- | --- |
-| GET | `/api/p/<uuid>` | Project as JSON (same shape as an export) |
-| GET | `/api/p/<uuid>/documents/<id>` | One document as Markdown with front matter |
-| POST | `/api/p/<uuid>/ops` | `{"ops": [...]}`: batch edits, validated together, broadcast live |
-| POST | `/api/p/<uuid>/import` | Replace the whole project with an export file |
+| GET | `/api/p/<id>` | Project as JSON (same shape as an export) |
+| GET | `/api/p/<id>/documents/<docId>` | One document as Markdown with front matter |
+| POST | `/api/p/<id>/ops` | `{"ops": [...]}`: batch edits, validated together, broadcast live |
+| POST | `/api/p/<id>/import` | Replace the whole project with an export file |
 
 ## Develop
 

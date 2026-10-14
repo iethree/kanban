@@ -16,8 +16,6 @@ export function newId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function cardPatch(raw: unknown): Partial<CardFields> | null {
   if (!isObj(raw)) return null;
   const patch: Partial<CardFields> = {};

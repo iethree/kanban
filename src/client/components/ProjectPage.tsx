@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Download, Ellipsis, Link2, Upload } from "lucide-react";
 import { LIMITS } from "../../shared/types";
+import { toShortId } from "../../shared/ids";
 import { projectPath, type ProjectRoute } from "../../shared/urls";
 import { downloadProject, pickJsonFile, uploadProject } from "../lib/files";
 import { rememberProject } from "../lib/recent";
@@ -55,7 +56,7 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
   const copyAgentInstructions = () =>
     copy(
       `Use the kanban board at ${location.origin}${base} to plan and track your work. ` +
-        `Fetch ${location.origin}/api/p/${projectId}/llms.txt first: it describes the board and the HTTP API for reading and updating it.`,
+        `Fetch ${location.origin}/api/p/${toShortId(projectId)}/llms.txt first: it describes the board and the HTTP API for reading and updating it.`,
       "Agent instructions copied. Paste them into your agent's prompt.",
     );
 

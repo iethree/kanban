@@ -1,3 +1,4 @@
+import { toShortId } from "../shared/ids";
 import type { ProjectRoute } from "../shared/urls";
 
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -7,7 +8,7 @@ const escapeHtml = (s: string) =>
 
 /** Where an agent can fetch the content of a given page without a browser. */
 export function agentLinks(origin: string, route: ProjectRoute, cardId: string | null) {
-  const api = `${origin}/api/p/${route.id}`;
+  const api = `${origin}/api/p/${toShortId(route.id)}`;
   const documentId = route.view.kind === "docs" && route.view.documentId && SAFE_ID.test(route.view.documentId)
     ? route.view.documentId
     : undefined;
@@ -42,7 +43,7 @@ function agentHintHtml(links: ReturnType<typeof agentLinks>): string {
 <h1>Kanban project</h1>
 <p>This page is a JavaScript app. If you are an AI agent or a script, you don't need a browser. Read and update this project over HTTP instead:</p>
 <ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>
-<p>Only the UUID in the URL identifies the project; the name before it is cosmetic. No authentication is needed.</p>
+<p>Only the id at the end of the URL identifies the project; the name before it is cosmetic. No authentication is needed.</p>
 </section>`;
 }
 

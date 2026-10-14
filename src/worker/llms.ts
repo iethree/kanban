@@ -1,5 +1,6 @@
 import type { Card, Doc, ProjectDocument } from "../shared/types";
 import { LIMITS } from "../shared/types";
+import { toShortId } from "../shared/ids";
 import { projectPath } from "../shared/urls";
 
 /** Cards listed per column in a project's llms.txt before pointing at the JSON endpoint. */
@@ -27,7 +28,7 @@ No authentication: the project URL is the credential. Send JSON with \`Content-T
 | POST | \`${base}/import\` | Replace the **entire** project with an export file. Destructive — only if a human asks. |
 
 \`POST /ops\` validates every op before applying any. On success it returns
-\`{"ok": true, "version": n, "results": [{"type", "id", "changed"}]}\`, where \`id\` is the id of the thing
+\`{"ok": true, "version": n, "url": "<project page>", "results": [{"type", "id", "changed"}]}\`, where \`id\` is the id of the thing
 the op touched (including ids generated for new cards, columns and documents). Errors return
 \`{"ok": false, "error": "..."}\` with status 400 (bad op) or 404 (project not created yet).
 
@@ -106,16 +107,22 @@ Use the board as the shared source of truth for your work. Humans may be watchin
 export function rootLlmsTxt(origin: string): string {
   return `# Kanban
 
-> Real-time shared kanban boards. Each project lives at \`${origin}/p/<name>/<uuid>\`, and anyone with that URL
+> Real-time shared kanban boards. Each project lives at \`${origin}/p/<name>/<id>\`, and anyone with that URL
 > can view and edit it — there are no accounts. Projects have ordered columns (statuses), cards, and a flat list
 > of Markdown documents. Edits made through the API appear live in everyone's browser.
 
-**If you were given a project URL** like \`${origin}/p/<name>/<uuid>\`, fetch
-\`${origin}/api/p/<uuid>/llms.txt\` instead of reading this file further. It contains that project's current
+**If you were given a project URL** like \`${origin}/p/<name>/<id>\`, fetch
+\`${origin}/api/p/<id>/llms.txt\` instead of reading this file further. It contains that project's current
 board, the ids you need, and ready-to-run commands.
 
-Only the UUID identifies a project. The \`<name>\` segment is a readable slug of the title that changes when
-the project is renamed, so never use it to look a project up. \`${origin}/p/<uuid>\` also works.
+### Project ids
+
+- The **id** is the last segment of the URL: 22 letters and digits, e.g. \`1pv7XjjQP9gM4BRBqypgrb\`. It is
+  **case-sensitive** — copy it exactly.
+- It is a compact (base62) encoding of a UUID, and every endpoint also accepts the UUID form
+  (\`3c5f5d83-d805-4e41-bba5-7a69e0ea588b\`). Both refer to the same project.
+- The \`<name>\` segment is a readable slug of the title that changes when the project is renamed. It is
+  ignored, so never use it to look a project up. \`${origin}/p/<id>\` also works.
 
 ## Concepts
 
@@ -127,19 +134,18 @@ the project is renamed, so never use it to look a project up. \`${origin}/p/<uui
 
 ## Creating a project
 
-Pick a new random UUID (v4) and send an \`init\` op. Column names can be plain strings.
+Pick a new random UUID (v4) and send an \`init\` op. Column names can be plain strings. The response
+includes the project's \`url\`, which uses the short id.
 
 \`\`\`sh
 ID=$(uuidgen | tr A-Z a-z)
 curl -s -X POST ${origin}/api/p/$ID/ops -H 'Content-Type: application/json' \\
   -d '{"ops":[{"type":"init","title":"My project","description":"","columns":["Backlog","In progress","Done"]}]}'
-echo "${origin}/p/$ID"
 \`\`\`
 
-Share the \`${origin}/p/$ID\` URL with the human so they can watch the board. It redirects to the
-\`/p/<name>/<uuid>\` form once the page loads.
+Share that \`url\` with the human so they can watch the board.
 
-${apiReference(`${origin}/api/p/<uuid>`)}
+${apiReference(`${origin}/api/p/<id>`)}
 
 ${WORKING_AGREEMENT}
 `;
@@ -157,8 +163,9 @@ function cardLine(card: Card): string {
 }
 
 export function projectLlmsTxt(doc: Doc, origin: string, projectId: string): string {
-  const base = `${origin}/api/p/${projectId}`;
-  const pageUrl = doc.initialized ? `${origin}${projectPath(projectId, doc.title)}` : `${origin}/p/${projectId}`;
+  const shortId = toShortId(projectId);
+  const base = `${origin}/api/p/${shortId}`;
+  const pageUrl = doc.initialized ? `${origin}${projectPath(projectId, doc.title)}` : `${origin}/p/${shortId}`;
 
   if (!doc.initialized) {
     return `# New kanban project

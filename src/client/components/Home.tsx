@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Plus, Search, Upload, X } from "lucide-react";
+import { toShortId } from "../../shared/ids";
 import { projectPath } from "../../shared/urls";
 import { navigate } from "../lib/router";
 import { forgetProject, rememberProject, useRecentProjects } from "../lib/recent";
@@ -13,7 +14,7 @@ export function Home() {
   const [importing, setImporting] = useState(false);
 
   const filtered = query
-    ? recent.filter((p) => `${p.title} ${p.id}`.toLowerCase().includes(query.toLowerCase()))
+    ? recent.filter((p) => `${p.title} ${p.id} ${toShortId(p.id)}`.toLowerCase().includes(query.toLowerCase()))
     : recent;
 
   const importNew = async () => {
@@ -22,7 +23,7 @@ export function Home() {
       const file = await pickJsonFile();
       if (!file) return;
       setImporting(true);
-      const id = crypto.randomUUID();
+      const id = toShortId(crypto.randomUUID());
       const doc = await uploadProject(id, file.data);
       rememberProject(id, doc.title);
       navigate(projectPath(id, doc.title));
@@ -50,7 +51,7 @@ export function Home() {
           <h1>Shared boards, no sign-up.</h1>
           <p>Create a project and share the link. Anyone who has it can view and edit in real time.</p>
           <div className="home-actions">
-            <button type="button" className="btn btn-primary" onClick={() => navigate(`/p/${crypto.randomUUID()}`)}>
+            <button type="button" className="btn btn-primary" onClick={() => navigate(`/p/${toShortId(crypto.randomUUID())}`)}>
               <Plus size={16} />
               New project
             </button>
@@ -100,7 +101,7 @@ export function Home() {
                   >
                     <span className="recent-title">{p.title || "Untitled project"}</span>
                     <span className="recent-meta">
-                      <code>{p.id.slice(0, 8)}</code>
+                      <code>{toShortId(p.id).slice(0, 8)}</code>
                       <span>{timeAgo(p.visitedAt)}</span>
                     </span>
                     <ArrowRight size={15} className="recent-arrow" />

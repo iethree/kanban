@@ -1,5 +1,5 @@
 import { parseProjectPath } from "../shared/urls";
-import { UUID_RE } from "../shared/validate";
+import { toProjectUuid } from "../shared/ids";
 import { rootLlmsTxt } from "./llms";
 import { agentLinks, prefersMarkdown, rewriteProjectPage } from "./pages";
 
@@ -19,8 +19,9 @@ export default {
     const match = url.pathname.match(ROUTE);
     if (match) {
       const [, projectId, action = ""] = match;
-      if (!projectId || !UUID_RE.test(projectId)) {
-        return Response.json({ error: "Invalid project id (expected a UUID)" }, { status: 400 });
+      const id = projectId ? toProjectUuid(projectId) : null;
+      if (!id) {
+        return Response.json({ error: "Invalid project id (expected a 22-character id or a UUID)" }, { status: 400 });
       }
       if (action === "ws" && request.headers.get("Upgrade") !== "websocket") {
         return new Response("Expected WebSocket upgrade", { status: 426 });
@@ -29,9 +30,8 @@ export default {
       if (request.method !== expected && !(expected === "GET" && request.method === "HEAD")) {
         return Response.json({ error: `Use ${expected}` }, { status: 405, headers: { Allow: expected } });
       }
-      const id = projectId.toLowerCase();
       const stub = env.PROJECTS.get(env.PROJECTS.idFromName(id));
-      // Normalise the path so the Durable Object always sees /api/p/<lowercase id>/<action>.
+      // Normalise the path so the Durable Object always sees /api/p/<uuid>/<action>.
       return stub.fetch(new Request(new URL(`/api/p/${id}/${action}`, url.origin), request));
     }
 
