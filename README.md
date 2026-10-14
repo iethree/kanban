@@ -11,9 +11,15 @@ Markdown documents, and agents can work with it over a plain HTTP API.
 the current board with ids, copy-pasteable `curl` commands, and a working agreement for tracking work
 on the board. The project menu's **Copy agent instructions** puts a ready-made prompt on the clipboard.
 
+Project pages are a client-side app, so the Worker also makes them useful without a browser
+(`src/worker/pages.ts`): the HTML includes `<link rel="alternate">` tags and a short, visually hidden note
+with the project's API URLs (React replaces it on load), and requesting a page with
+`Accept: text/markdown` returns the project's `llms.txt`, or the document's Markdown on a document page.
+
 | Method | Path | |
 | --- | --- | --- |
 | GET | `/api/p/<uuid>` | Project as JSON (same shape as an export) |
+| GET | `/api/p/<uuid>/documents/<id>` | One document as Markdown with front matter |
 | POST | `/api/p/<uuid>/ops` | `{"ops": [...]}`: batch edits, validated together, broadcast live |
 | POST | `/api/p/<uuid>/import` | Replace the whole project with an export file |
 

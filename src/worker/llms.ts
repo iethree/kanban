@@ -1,4 +1,4 @@
-import type { Card, Doc } from "../shared/types";
+import type { Card, Doc, ProjectDocument } from "../shared/types";
 import { LIMITS } from "../shared/types";
 import { projectPath } from "../shared/urls";
 
@@ -22,6 +22,7 @@ No authentication: the project URL is the credential. Send JSON with \`Content-T
 | --- | --- | --- |
 | GET | \`${base}\` | Full project as JSON: columns in order, each with its cards in order, plus documents. |
 | GET | \`${base}/llms.txt\` | This project's instructions and a Markdown snapshot of the board. |
+| GET | \`${base}/documents/<documentId>\` | One document as raw Markdown, with its title and timestamps as front matter. |
 | POST | \`${base}/ops\` | Apply edits. Body: \`{"ops": [op, ...]}\` (max 100). Applied in order and shown live to anyone viewing the board. |
 | POST | \`${base}/import\` | Replace the **entire** project with an export file. Destructive — only if a human asks. |
 
@@ -215,7 +216,8 @@ ${board}
 
 ${documents || "_(none yet)_"}
 
-Read a card's description or a document's body with \`curl -s ${base}\` and look it up by id.
+Card descriptions are in the JSON (\`curl -s ${base}\`, look the card up by id). Fetch a document's Markdown with
+\`curl -s ${base}/documents/<documentId>\`.
 
 ## Quick start
 
@@ -240,5 +242,18 @@ ${curlOps(base, [{ type: "addDocument", document: { title: "Notes", body: "# Not
 ${apiReference(base)}
 
 ${WORKING_AGREEMENT}
+`;
+}
+
+/** A single document as Markdown with YAML front matter, for `GET /api/p/<id>/documents/<docId>`. */
+export function documentMarkdown(d: ProjectDocument): string {
+  return `---
+id: ${d.id}
+title: ${JSON.stringify(d.title)}
+created: ${new Date(d.createdAt).toISOString()}
+updated: ${new Date(d.updatedAt).toISOString()}
+---
+
+${d.body}
 `;
 }

@@ -1,9 +1,11 @@
+import { parseProjectPath } from "../shared/urls";
 import { UUID_RE } from "../shared/validate";
 import { rootLlmsTxt } from "./llms";
+import { agentLinks, prefersMarkdown, rewriteProjectPage } from "./pages";
 
 export { ProjectRoom } from "./project-room";
 
-const ROUTE = /^\/api\/p\/([^/]+)(?:\/(ws|export|import|ops|llms\.txt))?\/?$/;
+const ROUTE = /^\/api\/p\/([^/]+)(?:\/(ws|export|import|ops|llms\.txt|documents\/[A-Za-z0-9_-]{1,64}))?\/?$/;
 const POST_ONLY = new Set(["import", "ops"]);
 
 export default {
@@ -35,6 +37,25 @@ export default {
 
     if (url.pathname.startsWith("/api/")) {
       return Response.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Project pages are a client-side app, so tell agents and scripts where the
+    // content lives: Markdown on request, otherwise hints injected into the HTML.
+    const route = parseProjectPath(url.pathname);
+    if (route && (request.method === "GET" || request.method === "HEAD")) {
+      const links = agentLinks(url.origin, route, url.searchParams.get("card"));
+      if (prefersMarkdown(request)) {
+        const stub = env.PROJECTS.get(env.PROJECTS.idFromName(route.id));
+        const target = links.document ?? links.llms;
+        const res = await stub.fetch(new Request(new URL(new URL(target).pathname, url.origin), { headers: request.headers }));
+        const headers = new Headers(res.headers);
+        headers.set("Vary", "Accept");
+        headers.set("Content-Location", target);
+        return new Response(res.body, { status: res.status, headers });
+      }
+      // The SPA shell is index.html; fetch it explicitly rather than relying on fallback.
+      const shell = await env.ASSETS.fetch(new Request(new URL("/", url.origin), request));
+      return rewriteProjectPage(shell, links);
     }
 
     return env.ASSETS.fetch(request);

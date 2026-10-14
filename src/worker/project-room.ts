@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { applyOp, emptyDoc } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
 import { exportDoc, importDoc, newId, sanitizeOp } from "../shared/validate";
-import { projectLlmsTxt } from "./llms";
+import { documentMarkdown, projectLlmsTxt } from "./llms";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const MAX_HTTP_OPS = 100;
@@ -109,7 +109,7 @@ export class ProjectRoom extends DurableObject<Env> {
 
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const [, , , projectId, action = ""] = url.pathname.split("/");
+    const [, , , projectId, action = "", itemId] = url.pathname.split("/");
 
     switch (action) {
       case "ws": {
@@ -134,6 +134,15 @@ export class ProjectRoom extends DurableObject<Env> {
         return new Response(projectLlmsTxt(doc, url.origin, projectId!), {
           headers: { "Content-Type": "text/markdown; charset=utf-8" },
         });
+      }
+
+      case "documents": {
+        const doc = this.load();
+        const document = itemId ? doc.documents[itemId] : undefined;
+        if (!doc.initialized || !document) {
+          return new Response("Document not found\n", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+        }
+        return new Response(documentMarkdown(document), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
       }
 
       case "ops":
