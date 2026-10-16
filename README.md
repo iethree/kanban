@@ -1,62 +1,150 @@
 # kanban
 
 A small real-time kanban board on Cloudflare Workers. No accounts: create a project, share the
-`/p/<name>/<id>` link, and anyone with it can view and edit live. Cards can be viewed as a board or as a
-list grouped into collapsible status sections (`/p/<name>/<id>/list`). Only the id matters; the name is a
-slug of the project title that follows renames, and `/p/<id>` works too.
+`/p/<name>/<id>` link, and anyone with it can view and edit live. Each project has a board, a list view
+grouped into collapsible status sections, and a flat list of Markdown documents. AI agents can work with
+it through the `kanban` CLI or a plain HTTP API.
 
-Project ids are UUIDs internally (they name the Durable Object). URLs show a 22-character, case-sensitive
-base62 encoding of the same 128 bits (`src/shared/ids.ts`), and every page and API route accepts either form. Each project has a board and a flat list of
-Markdown documents, and agents can work with it over a plain HTTP API.
+Only the id in a project URL matters. The name before it is a slug of the project title that follows
+renames, and `/p/<id>` works too. Project ids are UUIDs internally (they name the Durable Object); URLs
+show a 22-character, case-sensitive base62 encoding of the same 128 bits (`src/shared/ids.ts`), and every
+page and API route accepts either form.
 
-## For agents
+## Command-line interface
 
-### CLI
+`kanban` is a CLI for planning and tracking work from a terminal, built mainly for AI agents but
+pleasant for humans too. The app serves it itself, so it always matches the server it came from. It is
+a single dependency-free file that runs on Node 18+ or Bun.
 
-Agents with a shell can use the `kanban` CLI, which the app serves itself (one dependency-free file;
-Node 18+ or Bun):
+### Install
 
 ```sh
 curl -fsSL https://kanban.infopanel.org/install | sh
-kanban init https://kanban.infopanel.org/p/<name>/<id>   # or: kanban new "Project title"
-kanban next && kanban start 12
-kanban log 12 "Root cause: expired token cache"
-kanban done 12 "Fixed in a1b2c3d"
 ```
 
-`kanban init` writes a `.kanban` file so later commands know the project; `KANBAN_AGENT` (or `--as`)
-names the agent for claims and notes. Run `kanban help` for everything else. The source is in
-`src/cli/` and is bundled to `dist/kanban.js`; the Worker serves it at `/kanban.js` with its own origin
-filled in, plus the installer at `/install`.
+This installs `kanban` to `~/.local/bin` (set `KANBAN_INSTALL_DIR` to change it) and checks that it runs
+before replacing an existing copy. Re-run the same command to update.
 
-Cards have short numbers (#12). `claimCard` refuses to take a card someone else holds (409), and
-`appendToCard` / `appendToDocument` add notes without overwriting anyone's edits.
+### Set up a project
 
-### HTTP
+```sh
+kanban new "Website relaunch"                  # create a project and link this directory
+kanban init https://kanban.infopanel.org/p/website-relaunch/<id>   # or link an existing one
+```
 
-`/llms.txt` explains the app and API. `/api/p/<id>/llms.txt` is generated per project: it includes
-the current board with ids, copy-pasteable `curl` commands, and a working agreement for tracking work
-on the board. The project menu's **Copy agent instructions** puts a ready-made prompt on the clipboard.
+Both write a `.kanban` file in the current directory, and later commands find it by walking up from
+wherever you run them (like `.git`). The file holds the project link, which is also the key to edit
+the board, so don't commit it to a public repository.
 
-Project pages are a client-side app, so the Worker also makes them useful without a browser
-(`src/worker/pages.ts`): the HTML includes `<link rel="alternate">` tags and a short, visually hidden note
-with the project's API URLs (React replaces it on load), and requesting a page with
-`Accept: text/markdown` returns the project's `llms.txt`, or the document's Markdown on a document page.
+```json
+{ "project": "https://kanban.infopanel.org/p/website-relaunch/<id>", "agent": "claude" }
+```
+
+`agent` is optional; it names you on claims and progress notes.
+
+### Typical loop
+
+```sh
+kanban next                           # highest-priority unclaimed card in the first column
+kanban start 12                       # claim #12 and move it to the top of "In progress"
+kanban log 12 "Root cause: expired token cache"
+kanban done 12 "Fixed in a1b2c3d"     # append the summary and move it to "Done"
+```
+
+`start` refuses a card someone else has claimed (exit code 3), so several agents can share one board
+without picking up the same work. `log` and `done` append timestamped notes to the card's description
+(`**2026-10-15 14:03 UTC · claude:** …`) and never overwrite what's there.
+
+### Commands
+
+Cards are referenced by number (`12` or `#12`). Column and document names match case-insensitively,
+and a unique prefix is enough. Any text argument can be `-` to read from stdin.
+
+| Command | What it does |
+| --- | --- |
+| `kanban new <title> [--columns "A,B,C"] [--description TEXT]` | Create a project and link this directory |
+| `kanban init <project-url>` | Link this directory to an existing project |
+| `kanban url` | Print the project's web address, to share with a human |
+| `kanban board` | Columns and cards: `#12 title [priority, size] @assignee` |
+| `kanban show <card>` | One card, including its description |
+| `kanban next [--column C]` | Highest-priority unclaimed card in the first column (or `C`) |
+| `kanban add <title> [--column C] [--priority P] [--size S] [--description TEXT\|-]` | Add a card (to the first column by default) |
+| `kanban start <card> [--force] [--column C]` | Claim a card and move it to the in-progress column |
+| `kanban log <card> <text\|->` | Append a timestamped progress note |
+| `kanban done <card> [summary] [--column C]` | Append the summary and move the card to the done column |
+| `kanban move <card> <column>` | Move a card to the top of another column |
+| `kanban update <card> [--title T] [--priority P] [--size S] [--assignee NAME] [--description TEXT\|-]` | Change fields (`--description` replaces the whole text) |
+| `kanban claim <card> [--force]` / `kanban release <card>` | Set or clear the assignee without moving the card |
+| `kanban delete <card> --yes` | Delete a card |
+| `kanban docs` | List documents |
+| `kanban doc <title\|id>` | Print a document's Markdown |
+| `kanban doc write <title> [file\|-]` | Create or replace a document |
+| `kanban doc append <title> <text\|->` | Append to a document (creates it if missing) |
+
+Priority is `none | low | medium | high`; size is `none | xs | s | m | l | xl`. `start` looks for a
+column named like "In progress" or "Doing" (falling back to the second column), and `done` for one
+named like "Done" or "Shipped" (falling back to the last), unless you pass `--column`.
+
+### Options and environment
+
+| | |
+| --- | --- |
+| `--json` | Machine-readable output for `board`, `show`, `next`, `docs` and `doc` |
+| `--as NAME` / `KANBAN_AGENT` | Your name for claims and notes (default: `agent` in `.kanban`, then your username) |
+| `--project REF` / `KANBAN_PROJECT` | Project URL or id, overriding `.kanban` |
+| `KANBAN_ORIGIN` | Server to use when a project is given as a bare id, or for `kanban new` |
+
+Exit codes: `0` ok, `1` error, `2` bad usage, `3` card already claimed by someone else.
+
+### Pointing an agent at a board
+
+Add something like this to a repository's `AGENTS.md` or `CLAUDE.md` (the project menu's **Copy agent
+instructions** produces a version with the real link):
+
+```md
+Plan and track your work on the kanban board linked in `.kanban`.
+Use the `kanban` CLI (`kanban help`): `kanban next`, `kanban start <n>`, `kanban log <n> "..."`,
+`kanban done <n> "..."`. Add follow-up work with `kanban add`. Set KANBAN_AGENT to your name.
+```
+
+## HTTP API
+
+Agents without a shell can use the API directly. `/llms.txt` explains the app and API, and
+`/api/p/<id>/llms.txt` is generated per project: the current board with card numbers, copy-pasteable
+`curl` commands, and a working agreement for tracking work on the board.
 
 | Method | Path | |
 | --- | --- | --- |
 | GET | `/api/p/<id>` | Project as JSON (same shape as an export) |
+| GET | `/api/p/<id>/llms.txt` | Instructions and a Markdown snapshot of the board |
 | GET | `/api/p/<id>/documents/<docId>` | One document as Markdown with front matter |
 | POST | `/api/p/<id>/ops` | `{"ops": [...]}`: batch edits, validated together, broadcast live |
 | POST | `/api/p/<id>/import` | Replace the whole project with an export file |
+
+Card ops accept a card number (`12` or `"#12"`) as the `id`, and `column` names instead of ids.
+`claimCard` returns 409 if someone else holds the card, and `appendToCard` / `appendToDocument` add text
+without overwriting anyone's edits. `POST /ops` returns the project `url` and each card's `number`.
+
+Project pages are a client-side app, so the Worker also makes them useful without a browser
+(`src/worker/pages.ts`): the HTML includes `<link rel="alternate">` tags and a short, visually hidden
+note with the project's API and CLI instructions (React replaces it on load), and requesting a page
+with `Accept: text/markdown` returns the project's `llms.txt`, or the document's Markdown on a
+document page.
 
 ## Develop
 
 ```bash
 bun install
-bun run dev        # wrangler dev on http://localhost:8787 (rebuilds the frontend on change)
-bun test           # reducer + import/export tests
+bun run dev        # wrangler dev on http://localhost:8787; rebuilds the frontend and CLI on change
+bun test           # reducer, ids/URLs, page markup and CLI tests
 bun run typecheck
+```
+
+`bun run dev` keeps the real local origin, so you can try the CLI against it:
+
+```bash
+curl -fsSL http://localhost:8787/install | KANBAN_INSTALL_DIR=/tmp/kanban-bin sh
+/tmp/kanban-bin/kanban new "Local test"
 ```
 
 ## Deploy
@@ -71,18 +159,22 @@ Deploys to https://kanban.infopanel.org as a Workers custom domain (see `routes`
 
 ## How it works
 
-- **`src/worker/index.ts`**: routes `/api/p/:id/{ws,export,import}` to a Durable Object. Everything
-  else is served from static assets with SPA fallback.
+- **`src/worker/index.ts`**: routes `/api/p/<id>/…` to the project's Durable Object, serves `/llms.txt`,
+  the CLI (`/kanban.js`) and its installer (`/install`), and adds agent hints to `/p/…` pages.
+  Everything else is served from static assets with SPA fallback.
 - **`src/worker/project-room.ts`**: one Durable Object per project. Stores the project in SQLite
   (metadata in one row, one row per card and per document), relays edits over hibernatable WebSockets,
   and serves the HTTP API.
-- **`src/worker/llms.ts`**: generates the `llms.txt` files.
+- **`src/worker/llms.ts`**, **`pages.ts`**, **`cli.ts`**: the `llms.txt` files, page markup for agents,
+  and serving the CLI.
 - **`src/shared/reducer.ts`**: a pure, deterministic `applyOp(doc, op)` that the server and the
   browser share. Clients apply their edits optimistically, the server orders them, and clients
   rebase any still-pending edits on top of what the server confirms. Ops are idempotent, so
   unacknowledged edits are simply resent after a reconnect.
-- **`src/client`**: React + dnd-kit, bundled by Bun (`scripts/build-client.ts`) into `dist/`.
-  Recently visited projects are kept in `localStorage`.
+- **`src/client`**: React + dnd-kit, bundled by Bun into `dist/`. Recently visited projects are kept
+  in `localStorage`.
+- **`src/cli`**: the `kanban` CLI. `scripts/build-client.ts` bundles it into a single CommonJS file,
+  `dist/kanban.js`; the Worker fills in its own origin as the default server when serving it.
 
 ## Import / export format
 
@@ -96,7 +188,7 @@ Deploys to https://kanban.infopanel.org as a Workers custom domain (see `routes`
     "columns": [
       {
         "name": "Backlog",
-        "cards": [{ "title": "First card", "description": "", "priority": "high", "size": "m" }]
+        "cards": [{ "title": "First card", "description": "", "priority": "high", "size": "m", "assignee": "" }]
       }
     ],
     "documents": [{ "title": "Notes", "body": "# Markdown here" }]
@@ -104,5 +196,6 @@ Deploys to https://kanban.infopanel.org as a Workers custom domain (see `routes`
 }
 ```
 
-`priority` is `none | low | medium | high` and `size` is `none | xs | s | m | l | xl`. Ids, timestamps and
-`documents` are optional on import. Card descriptions and document bodies are Markdown.
+`priority` is `none | low | medium | high` and `size` is `none | xs | s | m | l | xl`. Ids, card numbers,
+assignees, timestamps and `documents` are optional on import. Card descriptions and document bodies are
+Markdown.
