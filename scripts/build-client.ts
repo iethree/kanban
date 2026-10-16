@@ -1,4 +1,4 @@
-// Bundles the frontend into ./dist for Workers static assets.
+// Bundles the frontend and the kanban CLI into ./dist for Workers static assets.
 import { $ } from "bun";
 
 await $`rm -rf dist`;
@@ -17,6 +17,22 @@ if (!result.success) {
   for (const log of result.logs) console.error(log);
   process.exit(1);
 }
+
+// The CLI is a single readable CommonJS file, so it runs on Node 18+ or Bun even when installed
+// without a file extension. The Worker serves it at /kanban.js (filling in its origin) and the
+// /install script puts it on the user's PATH.
+const cli = await Bun.build({
+  entrypoints: ["./src/cli/main.ts"],
+  target: "node",
+  format: "cjs",
+  banner: "#!/usr/bin/env node",
+});
+if (!cli.success) {
+  for (const log of cli.logs) console.error(log);
+  process.exit(1);
+}
+await Bun.write("dist/kanban.js", cli.outputs[0]!);
+console.log(`  dist/kanban.js  ${(cli.outputs[0]!.size / 1024).toFixed(1)} KB`);
 
 const fonts = "node_modules/@fontsource-variable/inter/files";
 await Bun.write("dist/fonts/inter-latin.woff2", Bun.file(`${fonts}/inter-latin-wght-normal.woff2`));

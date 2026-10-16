@@ -98,7 +98,7 @@ export const BoardColumn = memo(function BoardColumn({
             dispatch({
               type: "addCard",
               columnId: column.id,
-              card: { id: newId(), title, description: "", priority: "none", size: "none" },
+              card: { id: newId(), title, description: "", priority: "none", size: "none", assignee: "" },
             })
           }
           onClose={() => setComposing(false)}
@@ -113,7 +113,7 @@ export const BoardColumn = memo(function BoardColumn({
   );
 });
 
-function Composer({ onAdd, onClose }: { onAdd: (title: string) => void; onClose: () => void }) {
+export function Composer({ onAdd, onClose }: { onAdd: (title: string) => void; onClose: () => void }) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
   const cancelled = useRef(false);

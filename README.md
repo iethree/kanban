@@ -1,7 +1,8 @@
 # kanban
 
 A small real-time kanban board on Cloudflare Workers. No accounts: create a project, share the
-`/p/<name>/<id>` link, and anyone with it can view and edit live. Only the id matters; the name is a
+`/p/<name>/<id>` link, and anyone with it can view and edit live. Cards can be viewed as a board or as a
+list grouped into collapsible status sections (`/p/<name>/<id>/list`). Only the id matters; the name is a
 slug of the project title that follows renames, and `/p/<id>` works too.
 
 Project ids are UUIDs internally (they name the Durable Object). URLs show a 22-character, case-sensitive
@@ -9,6 +10,29 @@ base62 encoding of the same 128 bits (`src/shared/ids.ts`), and every page and A
 Markdown documents, and agents can work with it over a plain HTTP API.
 
 ## For agents
+
+### CLI
+
+Agents with a shell can use the `kanban` CLI, which the app serves itself (one dependency-free file;
+Node 18+ or Bun):
+
+```sh
+curl -fsSL https://kanban.infopanel.org/install | sh
+kanban init https://kanban.infopanel.org/p/<name>/<id>   # or: kanban new "Project title"
+kanban next && kanban start 12
+kanban log 12 "Root cause: expired token cache"
+kanban done 12 "Fixed in a1b2c3d"
+```
+
+`kanban init` writes a `.kanban` file so later commands know the project; `KANBAN_AGENT` (or `--as`)
+names the agent for claims and notes. Run `kanban help` for everything else. The source is in
+`src/cli/` and is bundled to `dist/kanban.js`; the Worker serves it at `/kanban.js` with its own origin
+filled in, plus the installer at `/install`.
+
+Cards have short numbers (#12). `claimCard` refuses to take a card someone else holds (409), and
+`appendToCard` / `appendToDocument` add notes without overwriting anyone's edits.
+
+### HTTP
 
 `/llms.txt` explains the app and API. `/api/p/<id>/llms.txt` is generated per project: it includes
 the current board with ids, copy-pasteable `curl` commands, and a working agreement for tracking work

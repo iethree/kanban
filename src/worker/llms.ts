@@ -3,6 +3,27 @@ import { LIMITS } from "../shared/types";
 import { toShortId } from "../shared/ids";
 import { projectPath } from "../shared/urls";
 
+/** The "use the CLI" section, shown before the raw HTTP API in both llms.txt files. */
+function cliSection(origin: string, projectUrl?: string): string {
+  return `## Quickest path: the \`kanban\` CLI
+
+If you can run shell commands, use the CLI instead of hand-writing HTTP requests. It needs Node 18+ or Bun.
+
+\`\`\`sh
+curl -fsSL ${origin}/install | sh
+${projectUrl ? `kanban init ${projectUrl}` : `kanban new "Project title"     # or: kanban init <project-url>`}
+kanban board                     # columns and cards: #12 title [priority, size] @assignee
+kanban next                      # the highest-priority unclaimed card
+kanban start 12                  # claim it and move it to In progress
+kanban log 12 "Found the cause: …"
+kanban done 12 "Fixed in a1b2c3d"
+\`\`\`
+
+\`kanban init\` writes a \`.kanban\` file in the current directory so later commands know the project. Set
+\`KANBAN_AGENT\` (or pass \`--as NAME\`) so your claims and notes carry your name. Run \`kanban help\` for the rest:
+adding cards, updating fields, documents (\`kanban doc write "Plan" plan.md\`) and \`--json\` output.`;
+}
+
 /** Cards listed per column in a project's llms.txt before pointing at the JSON endpoint. */
 const MAX_LISTED_CARDS = 150;
 
@@ -28,29 +49,38 @@ No authentication: the project URL is the credential. Send JSON with \`Content-T
 | POST | \`${base}/import\` | Replace the **entire** project with an export file. Destructive — only if a human asks. |
 
 \`POST /ops\` validates every op before applying any. On success it returns
-\`{"ok": true, "version": n, "url": "<project page>", "results": [{"type", "id", "changed"}]}\`, where \`id\` is the id of the thing
-the op touched (including ids generated for new cards, columns and documents). Errors return
-\`{"ok": false, "error": "..."}\` with status 400 (bad op) or 404 (project not created yet).
+\`{"ok": true, "version": n, "url": "<project page>", "results": [{"type", "id", "number", "changed"}]}\`, where \`id\` is the id of
+the thing the op touched (including ids generated for new cards, columns and documents) and \`number\` is the
+card's #number. Errors return \`{"ok": false, "error": "..."}\` with status 400 (bad op), 404 (project not
+created yet) or 409 (card already claimed by someone else).
 
 ### Ops
 
 Fields marked optional may be left out.
 
-**Cards** — \`priority\`: \`none | low | medium | high\`. \`size\`: \`none | xs | s | m | l | xl\` (relative effort; \`none\` = not estimated yet).
-Descriptions are Markdown.
+**Cards** — every card has a short \`number\` (shown as #12). \`priority\`: \`none | low | medium | high\`.
+\`size\`: \`none | xs | s | m | l | xl\` (relative effort; \`none\` = not estimated yet). \`assignee\`: who is working on it
+(\`""\` = nobody). Descriptions are Markdown.
 
 \`\`\`json
 {"type": "addCard", "column": "Backlog", "card": {"title": "Write tests", "description": "", "priority": "medium", "size": "s"}}
-{"type": "updateCard", "id": "CARD_ID", "patch": {"title": "...", "description": "...", "priority": "high", "size": "m"}}
-{"type": "moveCard", "id": "CARD_ID", "column": "In progress", "index": 0}
-{"type": "deleteCard", "id": "CARD_ID"}
+{"type": "claimCard", "id": 12, "assignee": "claude"}
+{"type": "appendToCard", "id": 12, "text": "**Progress:** tests written, 2 failing"}
+{"type": "moveCard", "id": 12, "column": "In progress", "index": 0}
+{"type": "updateCard", "id": 12, "patch": {"title": "...", "description": "...", "priority": "high", "size": "m", "assignee": ""}}
+{"type": "deleteCard", "id": 12}
 \`\`\`
 
+- \`id\` for card ops can be the card's number (\`12\` or \`"#12"\`) or its string id.
 - \`column\` matches a column name (case-insensitive); you can pass \`columnId\` instead.
+- \`claimCard\` fails with 409 if someone else already holds the card, so two agents can't take the same work.
+  Add \`"force": true\` only if a human asked you to take it over.
+- \`appendToCard\` adds a paragraph to the end of the description without touching the rest. Prefer it to
+  \`updateCard\` for progress notes; it can't overwrite someone else's edits.
 - \`addCard\`: \`index\` optional (default: bottom), \`card.id\` optional (generated), other card fields optional.
 - \`moveCard\`: \`index\` is the card's final position in the target column (0 = top); omit it to move to the bottom.
-- \`updateCard\`: \`patch\` may contain any subset of fields. Text fields are **replaced**, not appended —
-  read the current value first if you want to add to it.
+- \`updateCard\`: \`patch\` may contain any subset of fields. Text fields are **replaced** — read the current
+  value first, or use \`appendToCard\`.
 
 **Columns** (a card's status is the column it is in)
 
@@ -68,6 +98,7 @@ Descriptions are Markdown.
 \`\`\`json
 {"type": "addDocument", "document": {"title": "Release plan", "body": "# Release plan\\n..."}}
 {"type": "updateDocument", "id": "DOCUMENT_ID", "patch": {"title": "...", "body": "..."}}
+{"type": "appendToDocument", "id": "DOCUMENT_ID", "text": "## 2026-10-15\n- decided X"}
 {"type": "deleteDocument", "id": "DOCUMENT_ID"}
 \`\`\`
 
@@ -86,12 +117,13 @@ const WORKING_AGREEMENT = `## Working agreement for agents
 
 Use the board as the shared source of truth for your work. Humans may be watching and editing at the same time.
 
-1. **Read before you write.** Fetch the project at the start of a session and again before editing a card or
-   document, since people edit concurrently. Text fields are overwritten by updates, not merged.
-2. **Claim work visibly.** Before you start a card, move it to the top of the in-progress column (the one
-   meaning "doing now", e.g. "In progress"). Work on one card at a time unless asked otherwise.
-3. **Log progress on the card.** Keep the original description and add to it, e.g. a \`## Progress\` section
-   with a checklist, links, and what changed. Keep it short and factual.
+1. **Read before you write.** Fetch the board at the start of a session and before changing a card, since
+   people edit concurrently.
+2. **Claim work visibly.** Before you start a card, claim it with your name and move it to the top of the
+   in-progress column (e.g. "In progress"); \`kanban start 12\` does both. If it's claimed by someone else, pick
+   another card. Work on one card at a time unless asked otherwise.
+3. **Log progress on the card** by appending (\`kanban log 12 "…"\` or \`appendToCard\`), never by rewriting the
+   description. Keep notes short and factual: what changed, links, what's next.
 4. **Finish cleanly.** When a card is done, add a one-line summary of the outcome and move it to the done
    column (e.g. "Done").
 5. **Say when you're blocked.** Leave the card where it is, add a \`**Blocked:**\` line explaining what you
@@ -124,6 +156,8 @@ board, the ids you need, and ready-to-run commands.
 - The \`<name>\` segment is a readable slug of the title that changes when the project is renamed. It is
   ignored, so never use it to look a project up. \`${origin}/p/<id>\` also works.
 
+${cliSection(origin)}
+
 ## Concepts
 
 - **Project**: title, description, ordered columns, cards, documents.
@@ -155,11 +189,12 @@ function cardLine(card: Card): string {
   const meta = [
     card.priority !== "none" ? `${card.priority} priority` : null,
     card.size !== "none" ? `size ${card.size.toUpperCase()}` : "no size",
+    card.assignee ? `claimed by ${card.assignee}` : null,
+    card.description ? "has description" : null,
   ]
     .filter(Boolean)
     .join(", ");
-  const desc = card.description ? " — has description" : "";
-  return `- \`${card.id}\` ${oneLine(card.title) || "(untitled)"} _(${meta}${desc})_`;
+  return `- **#${card.number}** ${oneLine(card.title) || "(untitled)"} _(${meta})_`;
 }
 
 export function projectLlmsTxt(doc: Doc, origin: string, projectId: string): string {
@@ -212,6 +247,8 @@ ${WORKING_AGREEMENT}
 
 This file is a snapshot taken ${new Date().toISOString()}. Re-fetch \`${base}/llms.txt\` (or GET \`${base}\` for
 full JSON including card descriptions and document bodies) before making decisions.
+
+${cliSection(origin, pageUrl)}
 
 ## Board
 

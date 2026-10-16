@@ -19,10 +19,13 @@ export function projectPath(id: string, title: string, suffix = ""): string {
 }
 
 /** `id` is always the canonical UUID, whichever form appeared in the URL. */
-export type ProjectRoute = { id: string; view: { kind: "board" } | { kind: "docs"; documentId?: string } };
+export type ProjectRoute = {
+  id: string;
+  view: { kind: "board" } | { kind: "list" } | { kind: "docs"; documentId?: string };
+};
 
 /**
- * Parses `/p/[<anything>/]<id>[/docs[/<documentId>]]`, where the id is the short
+ * Parses `/p/[<anything>/]<id>[/list | /docs[/<documentId>]]`, where the id is the short
  * base62 form or a UUID. The segment before the id is ignored, so renamed
  * projects and old `/p/<uuid>` links keep working.
  */
@@ -35,6 +38,7 @@ export function parseProjectPath(pathname: string): ProjectRoute | null {
   const [section, documentId, ...extra] = parts.slice(idIndex + 1);
   const id = toProjectUuid(parts[idIndex]!)!;
   if (section === undefined) return { id, view: { kind: "board" } };
+  if (section === "list" && documentId === undefined) return { id, view: { kind: "list" } };
   if (section === "docs" && extra.length === 0) return { id, view: { kind: "docs", documentId } };
   return null;
 }

@@ -38,6 +38,12 @@ describe("parseProjectPath", () => {
     expect(parseProjectPath(`/p/${SHORT}/docs`)?.view).toEqual({ kind: "docs", documentId: undefined });
   });
 
+  test("list view", () => {
+    expect(parseProjectPath(`/p/my-board/${SHORT}/list`)).toEqual({ id: ID, view: { kind: "list" } });
+    expect(parseProjectPath(`/p/${SHORT}/list/`)?.view).toEqual({ kind: "list" });
+    expect(parseProjectPath(`/p/x/${SHORT}/list/extra`)).toBeNull();
+  });
+
   test("a name that looks like an id doesn't shadow the real id", () => {
     expect(parseProjectPath(`/p/abcdefghijklmnopqrstuv/${SHORT}`)?.id).toBe(ID);
   });

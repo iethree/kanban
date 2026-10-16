@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { applyOp, emptyDoc } from "../src/shared/reducer";
+import { applyOp, emptyDoc, normalizeDoc } from "../src/shared/reducer";
 import type { Doc, Op } from "../src/shared/types";
 import { exportDoc, importDoc, sanitizeOp } from "../src/shared/validate";
 
 const run = (ops: Op[], doc: Doc = emptyDoc()) => ops.reduce((d, op, i) => applyOp(d, op, 1000 + i), doc);
 
-const card = (id: string, title = id) => ({ id, title, description: "", priority: "none" as const, size: "m" as const });
+const card = (id: string, title = id) => ({ id, title, description: "", priority: "none" as const, size: "m" as const, assignee: "" });
 
 const base = run([
   { type: "init", title: "P", description: "", columns: [{ id: "a", name: "A" }, { id: "b", name: "B" }] },
@@ -147,4 +147,64 @@ describe("documents", () => {
 test("moveCard without an index moves to the bottom", () => {
   const op = sanitizeOp({ type: "moveCard", id: "c1", columnId: "a" })!;
   expect(ids(run([op], base)).a).toEqual(["c2", "c3", "c1"]);
+});
+
+describe("card numbers, claiming and appending", () => {
+  test("cards are numbered in creation order and numbers aren't reused", () => {
+    expect([base.cards.c1!.number, base.cards.c2!.number, base.cards.c3!.number]).toEqual([1, 2, 3]);
+    const doc = run([{ type: "deleteCard", id: "c3" }, { type: "addCard", columnId: "b", card: card("c4") }], base);
+    expect(doc.cards.c4!.number).toBe(4);
+  });
+
+  test("claimCard won't take a card from someone else unless forced", () => {
+    const claimed = run([{ type: "claimCard", id: "c1", assignee: "claude" }], base);
+    expect(claimed.cards.c1!.assignee).toBe("claude");
+    expect(applyOp(claimed, { type: "claimCard", id: "c1", assignee: "codex" }, 0)).toBe(claimed);
+    expect(applyOp(claimed, { type: "claimCard", id: "c1", assignee: "claude" }, 0)).toBe(claimed);
+    expect(run([{ type: "claimCard", id: "c1", assignee: "codex", force: true }], claimed).cards.c1!.assignee).toBe("codex");
+  });
+
+  test("appendToCard adds a paragraph without touching existing text", () => {
+    const once = run([{ type: "appendToCard", id: "c1", text: "first note" }], base);
+    expect(once.cards.c1!.description).toBe("first note");
+    const twice = run([{ type: "appendToCard", id: "c1", text: "  second note  " }], once);
+    expect(twice.cards.c1!.description).toBe("first note\n\nsecond note");
+    expect(applyOp(twice, { type: "appendToCard", id: "c1", text: "   " }, 0)).toBe(twice);
+  });
+
+  test("appendToDocument", () => {
+    const doc = run(
+      [
+        { type: "addDocument", document: { id: "d1", title: "Log", body: "# Log" } },
+        { type: "appendToDocument", id: "d1", text: "- entry" },
+      ],
+      base,
+    );
+    expect(doc.documents.d1!.body).toBe("# Log\n\n- entry");
+  });
+
+  test("normalizeDoc numbers cards from older projects in board order and keeps valid numbers", () => {
+    const legacy = structuredClone(base) as any;
+    delete legacy.nextCardNumber;
+    for (const c of Object.values(legacy.cards) as any[]) {
+      delete c.number;
+      delete c.assignee;
+    }
+    legacy.cards.c2.number = 7;
+    const fixed = normalizeDoc(legacy);
+    expect(fixed.cards.c2!.number).toBe(7);
+    expect([fixed.cards.c1!.number, fixed.cards.c3!.number]).toEqual([8, 9]);
+    expect(fixed.nextCardNumber).toBe(10);
+    expect(fixed.cards.c1!.assignee).toBe("");
+    expect(normalizeDoc(fixed)).toBe(fixed);
+  });
+
+  test("import keeps card numbers and renumbers duplicates", () => {
+    const doc = importDoc({
+      columns: [{ name: "A", cards: [{ title: "x", number: 5 }, { title: "y", number: 5 }, { title: "z" }] }],
+    });
+    const numbers = doc.columns[0]!.cardIds.map((id) => doc.cards[id]!.number);
+    expect(numbers).toEqual([5, 6, 7]);
+    expect(doc.nextCardNumber).toBe(8);
+  });
 });

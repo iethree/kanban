@@ -6,10 +6,14 @@ export type Size = (typeof SIZES)[number];
 
 export interface Card {
   id: string;
+  /** Short per-project number shown as #12; assigned by the server, never reused. */
+  number: number;
   title: string;
   description: string;
   priority: Priority;
   size: Size;
+  /** Who is working on the card (an agent or person's name); "" when unassigned. */
+  assignee: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -37,11 +41,12 @@ export interface Doc {
   cards: Record<string, Card>;
   documentIds: string[];
   documents: Record<string, ProjectDocument>;
+  nextCardNumber: number;
   createdAt: number;
   updatedAt: number;
 }
 
-export type CardFields = Pick<Card, "title" | "description" | "priority" | "size">;
+export type CardFields = Pick<Card, "title" | "description" | "priority" | "size" | "assignee">;
 export type DocumentFields = Pick<ProjectDocument, "title" | "body">;
 
 export type Op =
@@ -55,9 +60,14 @@ export type Op =
   | { type: "updateCard"; id: string; patch: Partial<CardFields> }
   | { type: "moveCard"; id: string; columnId: string; index: number }
   | { type: "deleteCard"; id: string }
+  /** Sets the assignee unless someone else already holds the card (pass force to take it over). */
+  | { type: "claimCard"; id: string; assignee: string; force?: boolean }
+  /** Adds text to the end of the description without touching what's there. */
+  | { type: "appendToCard"; id: string; text: string }
   | { type: "addDocument"; document: { id: string } & DocumentFields }
   | { type: "updateDocument"; id: string; patch: Partial<DocumentFields> }
-  | { type: "deleteDocument"; id: string };
+  | { type: "deleteDocument"; id: string }
+  | { type: "appendToDocument"; id: string; text: string };
 
 /** Messages sent from the browser to the project room. */
 export type ClientMessage = { t: "op"; opId: string; op: Op };
@@ -75,6 +85,7 @@ export const DEFAULT_COLUMNS = ["Backlog", "In progress", "Done"];
 export const LIMITS = {
   title: 200,
   name: 80,
+  assignee: 60,
   description: 20_000,
   columns: 50,
   cards: 5_000,

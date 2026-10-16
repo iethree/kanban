@@ -14,6 +14,8 @@ export function agentLinks(origin: string, route: ProjectRoute, cardId: string |
     : undefined;
   return {
     api,
+    origin,
+    page: `${origin}/p/${toShortId(route.id)}`,
     llms: `${api}/llms.txt`,
     document: documentId ? `${api}/documents/${documentId}` : undefined,
     documentId,
@@ -32,6 +34,7 @@ function agentHintHtml(links: ReturnType<typeof agentLinks>): string {
     `Instructions, a Markdown snapshot of the board, and the edit API: <code>GET</code> ${code(links.llms)}`,
     `The whole project (columns, cards, documents) as JSON: <code>GET</code> ${code(links.api)}`,
     `Make changes: <code>POST</code> ${code(`${links.api}/ops`)} with <code>{"ops": [...]}</code> (see llms.txt for the op reference)`,
+    `Or, from a shell, use the CLI: ${code(`curl -fsSL ${links.origin}/install | sh`)} then ${code(`kanban init ${links.page}`)} and ${code("kanban help")}`,
   ];
   if (links.document) {
     items.unshift(`This document (${code(links.documentId!)}) as raw Markdown: <code>GET</code> ${code(links.document)}`);

@@ -10,6 +10,7 @@ import { useProject, type ConnectionStatus } from "../lib/sync";
 import { BoardSkeleton, BoardView } from "./BoardView";
 import { CardModal } from "./CardModal";
 import { DocumentsView } from "./Documents";
+import { ListView } from "./ListView";
 import { SetupDialog } from "./SetupDialog";
 import { EditableText, Logo, Menu, MenuItem, MenuSeparator, ThemeToggle } from "./ui";
 
@@ -21,7 +22,8 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
   const [toast, showToast] = useToast();
   // Until the project loads we don't know its name, so links fall back to the generic slug.
   const base = projectPath(projectId, doc?.title ?? "");
-  const viewSuffix = view.kind === "docs" ? `/docs${view.documentId ? `/${view.documentId}` : ""}` : "";
+  const viewSuffix =
+    view.kind === "docs" ? `/docs${view.documentId ? `/${view.documentId}` : ""}` : view.kind === "list" ? "/list" : "";
 
   // Keep the address bar on the canonical /p/<slug>/<uuid> form, e.g. after a rename
   // or when opened via an old link. Replacing (not pushing) keeps history clean.
@@ -55,9 +57,17 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
 
   const copyAgentInstructions = () =>
     copy(
-      `Use the kanban board at ${location.origin}${base} to plan and track your work. ` +
-        `Fetch ${location.origin}/api/p/${toShortId(projectId)}/llms.txt first: it describes the board and the HTTP API for reading and updating it.`,
-      "Agent instructions copied. Paste them into your agent's prompt.",
+      [
+        `Plan and track your work on the kanban board at ${location.origin}${base}`,
+        "",
+        `If you can run shell commands, install the CLI and link this project:`,
+        `  curl -fsSL ${location.origin}/install | sh`,
+        `  kanban init ${location.origin}${base}`,
+        "Then use `kanban next`, `kanban start <n>`, `kanban log <n> \"...\"` and `kanban done <n> \"...\"` (see `kanban help`).",
+        "",
+        `Otherwise, fetch ${location.origin}/api/p/${toShortId(projectId)}/llms.txt: it describes the board and the HTTP API.`,
+      ].join("\n"),
+      "Agent instructions copied. Paste them into your agent's prompt or AGENTS.md.",
     );
 
   const importFile = async () => {
@@ -161,6 +171,9 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
               <TabLink href={base} active={view.kind === "board"}>
                 Board
               </TabLink>
+              <TabLink href={`${base}/list`} active={view.kind === "list"}>
+                List
+              </TabLink>
               <TabLink href={`${base}/docs`} active={view.kind === "docs"}>
                 Documents
                 {doc.documentIds.length > 0 && <span className="tab-count">{doc.documentIds.length}</span>}
@@ -170,13 +183,15 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
 
           {view.kind === "board" ? (
             <BoardView doc={doc} dispatch={dispatch} onOpenCard={openCard} />
+          ) : view.kind === "list" ? (
+            <ListView projectId={projectId} doc={doc} dispatch={dispatch} onOpenCard={openCard} />
           ) : (
             <DocumentsView basePath={`${base}/docs`} doc={doc} documentId={view.documentId} dispatch={dispatch} />
           )}
         </>
       )}
 
-      {doc && view.kind === "board" && openCardEntry && (
+      {doc && view.kind !== "docs" && openCardEntry && (
         <CardModal
           key={openCardEntry.card.id}
           card={openCardEntry.card}

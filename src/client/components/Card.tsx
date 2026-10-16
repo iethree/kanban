@@ -6,24 +6,32 @@ import type { Card } from "../../shared/types";
 import { PRIORITY_LABEL, PriorityIcon } from "./ui";
 
 export const CardBody = memo(function CardBody({ card }: { card: Card }) {
-  const hasMeta = card.priority !== "none" || card.description || card.size !== "none";
   return (
     <>
       <div className={`card-title${card.title ? "" : " is-empty"}`}>{card.title || "Untitled"}</div>
-      {hasMeta && (
-        <div className="card-meta">
-          {card.priority !== "none" && (
-            <span
-              className={`card-priority priority-${card.priority}`}
-              title={`Priority: ${PRIORITY_LABEL[card.priority]}`}
-            >
-              <PriorityIcon priority={card.priority} />
-              {PRIORITY_LABEL[card.priority]}
-            </span>
-          )}
-          {card.description && (
-            <span className="card-has-desc" title="Has description">
-              <AlignLeft size={13} />
+      <div className="card-meta">
+        <span className="card-number">#{card.number}</span>
+        {card.priority !== "none" && (
+          <span
+            className={`card-priority priority-${card.priority}`}
+            title={`Priority: ${PRIORITY_LABEL[card.priority]}`}
+          >
+            <PriorityIcon priority={card.priority} />
+            {PRIORITY_LABEL[card.priority]}
+          </span>
+        )}
+        {card.description && (
+          <span className="card-has-desc" title="Has description">
+            <AlignLeft size={13} />
+          </span>
+        )}
+        <span className="card-meta-end">
+          {card.assignee && (
+            <span className="card-assignee" title={`Claimed by ${card.assignee}`}>
+              <span className="avatar" aria-hidden>
+                {card.assignee[0]!.toUpperCase()}
+              </span>
+              <span className="card-assignee-name">{card.assignee}</span>
             </span>
           )}
           {card.size !== "none" && (
@@ -31,8 +39,8 @@ export const CardBody = memo(function CardBody({ card }: { card: Card }) {
               {card.size.toUpperCase()}
             </span>
           )}
-        </div>
-      )}
+        </span>
+      </div>
     </>
   );
 });

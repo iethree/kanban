@@ -1,4 +1,5 @@
 import type { Card, CardFields, Doc, DocumentFields, Op, Priority, Size, ProjectDocument } from "./types";
+import { normalizeDoc } from "./reducer";
 import { LIMITS, PRIORITIES, SIZES } from "./types";
 
 type Obj = Record<string, unknown>;
@@ -38,6 +39,11 @@ function cardPatch(raw: unknown): Partial<CardFields> | null {
     const v = size(raw.size);
     if (!v) return null;
     patch.size = v;
+  }
+  if ("assignee" in raw) {
+    const v = str(raw.assignee, LIMITS.assignee);
+    if (v === undefined) return null;
+    patch.assignee = v.trim();
   }
   return patch;
 }
@@ -127,8 +133,22 @@ export function sanitizeOp(raw: unknown): Op | null {
           description: patch.description ?? "",
           priority: patch.priority ?? "none",
           size: patch.size ?? "none",
+          assignee: patch.assignee ?? "",
         },
       };
+    }
+    case "claimCard": {
+      const cardId = id(raw.id);
+      const assignee = str(raw.assignee, LIMITS.assignee)?.trim();
+      if (!cardId || !assignee) return null;
+      return { type: "claimCard", id: cardId, assignee, force: raw.force === true };
+    }
+    case "appendToCard":
+    case "appendToDocument": {
+      const targetId = id(raw.id);
+      const text = str(raw.text, LIMITS.body);
+      if (!targetId || text === undefined) return null;
+      return { type: raw.type, id: targetId, text };
     }
     case "updateCard": {
       const cardId = id(raw.id);
@@ -183,6 +203,7 @@ export interface ExportedProject {
     description: string;
     createdAt: number;
     updatedAt: number;
+    nextCardNumber: number;
     columns: {
       id: string;
       name: string;
@@ -202,6 +223,7 @@ export function exportDoc(doc: Doc): ExportedProject {
       description: doc.description,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
+      nextCardNumber: doc.nextCardNumber,
       columns: doc.columns.map((c) => ({
         id: c.id,
         name: c.name,
@@ -231,6 +253,7 @@ export function importDoc(raw: unknown, now = Date.now()): Doc {
     cards: {},
     documentIds: [],
     documents: {},
+    nextCardNumber: num(project.nextCardNumber) ?? 1,
     createdAt: num(project.createdAt) ?? now,
     updatedAt: now,
   };
@@ -256,6 +279,9 @@ export function importDoc(raw: unknown, now = Date.now()): Doc {
         description: str(rawCard.description, LIMITS.description) ?? "",
         priority: priority(rawCard.priority) ?? "none",
         size: size(rawCard.size) ?? "none",
+        // Kept when valid and unique; normalizeDoc renumbers anything else.
+        number: num(rawCard.number) ?? 0,
+        assignee: str(rawCard.assignee, LIMITS.assignee)?.trim() ?? "",
         createdAt: num(rawCard.createdAt) ?? now,
         updatedAt: num(rawCard.updatedAt) ?? now,
       };
@@ -280,5 +306,5 @@ export function importDoc(raw: unknown, now = Date.now()): Doc {
     };
     doc.documentIds.push(docId);
   }
-  return doc;
+  return normalizeDoc(doc);
 }

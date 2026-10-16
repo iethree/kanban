@@ -1,5 +1,6 @@
 import { parseProjectPath } from "../shared/urls";
 import { toProjectUuid } from "../shared/ids";
+import { installScript, serveCli } from "./cli";
 import { rootLlmsTxt } from "./llms";
 import { agentLinks, prefersMarkdown, rewriteProjectPage } from "./pages";
 
@@ -11,6 +12,9 @@ const POST_ONLY = new Set(["import", "ops"]);
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/install") return installScript(url.origin);
+    if (url.pathname === "/kanban.js") return serveCli(env.ASSETS, url.origin);
 
     if (url.pathname === "/llms.txt") {
       return new Response(rootLlmsTxt(url.origin), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });

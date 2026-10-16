@@ -20,6 +20,7 @@ export function CardModal({
 }) {
   const update = (patch: Partial<CardFields>) => dispatch({ type: "updateCard", id: card.id, patch });
   const title = useRemoteDraft(card.title, (title) => update({ title }));
+  const assignee = useRemoteDraft<HTMLInputElement>(card.assignee, (assignee) => update({ assignee: assignee.trim() }));
   const titleRef = useRef<HTMLTextAreaElement>(null);
   useAutosize(titleRef, title.value);
 
@@ -103,6 +104,23 @@ export function CardModal({
             </div>
 
             <div className="side-field">
+              <label className="side-label" htmlFor="card-assignee">
+                Assignee
+              </label>
+              <input
+                id="card-assignee"
+                className="text-input"
+                placeholder="Unassigned"
+                maxLength={LIMITS.assignee}
+                autoComplete="off"
+                {...assignee}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
+            </div>
+
+            <div className="side-field">
               <span className="side-label">Size</span>
               <div className="segmented segmented-size" role="radiogroup" aria-label="Size">
                 {SIZES.map((s) => (
@@ -124,7 +142,9 @@ export function CardModal({
 
             <div className="side-footer">
               <div className="side-meta">
-                <span>Created {timeAgo(card.createdAt)}</span>
+                <span>
+                  Card #{card.number} · Created {timeAgo(card.createdAt)}
+                </span>
                 {card.updatedAt - card.createdAt > 1000 && <span>Updated {timeAgo(card.updatedAt)}</span>}
               </div>
               <button

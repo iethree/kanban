@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { applyOp, emptyDoc } from "../shared/reducer";
+import { applyOp, claimConflict, emptyDoc, normalizeDoc } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
 import { exportDoc, importDoc, newId, sanitizeOp } from "../shared/validate";
 import { projectPath } from "../shared/urls";
@@ -45,13 +45,11 @@ export class ProjectRoom extends DurableObject<Env> {
     if (!project) return (this.doc = emptyDoc());
     const rows = (table: string) =>
       Object.fromEntries(this.sql.exec<Row>(`SELECT id, data FROM ${table}`).toArray().map((r) => [r.id, JSON.parse(r.data)]));
-    const doc: Doc = {
-      // Defaults for projects saved before documents existed.
-      documentIds: [],
-      ...JSON.parse(project),
-      cards: rows("cards"),
-      documents: rows("documents"),
-    };
+    const stored: Doc = { ...JSON.parse(project), cards: rows("cards"), documents: rows("documents") };
+    // Projects saved by older versions lack card numbers etc. Fill them in once and persist,
+    // so numbers stay stable across reloads.
+    const doc = normalizeDoc(stored);
+    if (doc !== stored) this.persist(emptyDoc(), doc);
     this.doc = doc;
     return doc;
   }
@@ -69,6 +67,11 @@ export class ProjectRoom extends DurableObject<Env> {
 
   private save(prev: Doc, next: Doc) {
     this.version++;
+    this.persist(prev, next);
+    this.doc = next;
+  }
+
+  private persist(prev: Doc, next: Doc) {
     this.ctx.storage.transactionSync(() => {
       const { cards, documents, ...project } = next;
       this.sql.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('project', ?)`, JSON.stringify(project));
@@ -76,7 +79,6 @@ export class ProjectRoom extends DurableObject<Env> {
       this.syncTable("cards", prev.cards, cards);
       this.syncTable("documents", prev.documents, documents);
     });
-    this.doc = next;
   }
 
   /** Applies a validated op, persists and broadcasts it. Returns whether anything changed. */
@@ -200,11 +202,30 @@ export class ProjectRoom extends DurableObject<Env> {
       if (typeof prepared === "string") return badRequest(`ops[${i}]: ${prepared}`);
       const op = sanitizeOp(prepared);
       if (!op) return badRequest(`ops[${i}] is not a valid op. See /llms.txt for the op reference.`);
+      if (op.type === "claimCard") {
+        const card = scratch.cards[op.id];
+        const holder = card && claimConflict(card, op);
+        if (card && holder) {
+          return Response.json(
+            {
+              ok: false,
+              error: `Card #${card.number} is already claimed by "${holder}". Pick another card, or pass "force": true to take it over.`,
+              conflict: { card: card.number, assignee: holder },
+            },
+            { status: 409 },
+          );
+        }
+      }
       ops.push(op);
       scratch = applyOp(scratch, op, Date.now());
     }
 
-    const results = ops.map((op) => ({ type: op.type, id: opTargetId(op), changed: this.commit(op, `http-${newId()}`) }));
+    const results = ops.map((op) => {
+      const id = opTargetId(op);
+      const changed = this.commit(op, `http-${newId()}`);
+      const number = id ? this.load().cards[id]?.number : undefined;
+      return { type: op.type, id, ...(number ? { number } : {}), changed };
+    });
     const { origin, pathname } = new URL(request.url);
     const url = `${origin}${projectPath(pathname.split("/")[3]!, this.load().title)}`;
     return Response.json({ ok: true, version: this.version, url, results });
@@ -221,6 +242,12 @@ export class ProjectRoom extends DurableObject<Env> {
         if (!column) return `no column named "${op.column}"`;
         op.columnId = column.id;
       }
+    }
+    if (CARD_OPS.has(String(op.type)) && (typeof op.id === "number" || (typeof op.id === "string" && /^#?\d+$/.test(op.id)))) {
+      const number = Number(String(op.id).replace("#", ""));
+      const card = Object.values(doc.cards).find((c) => c.number === number);
+      if (!card) return `no card #${number}`;
+      op.id = card.id;
     }
     if (op.type === "addCard" && isObj(op.card) && op.card.id === undefined) op.card = { ...op.card, id: newId() };
     if (op.type === "addDocument" && isObj(op.document) && op.document.id === undefined)
@@ -279,6 +306,9 @@ function opTargetId(op: Op): string | undefined {
       return op.id;
   }
 }
+
+/** Ops whose `id` is a card, which HTTP callers may give as a card number (12 or "#12"). */
+const CARD_OPS = new Set(["updateCard", "moveCard", "deleteCard", "claimCard", "appendToCard"]);
 
 const badRequest = (error: string) => Response.json({ ok: false, error }, { status: 400 });
 const notFound = () =>

@@ -10,6 +10,7 @@ export function emptyDoc(): Doc {
     cards: {},
     documentIds: [],
     documents: {},
+    nextCardNumber: 1,
     createdAt: 0,
     updatedAt: 0,
   };
@@ -25,6 +26,62 @@ function insertAt<T>(list: T[], item: T, index: number | undefined): T[] {
 
 function findColumnOfCard(doc: Doc, cardId: string): Column | undefined {
   return doc.columns.find((c) => c.cardIds.includes(cardId));
+}
+
+/** Adds a paragraph to the end of existing Markdown, separated by a blank line. */
+function appendText(existing: string, text: string, max: number): string {
+  const head = existing.trimEnd();
+  return (head ? `${head}\n\n${text.trim()}` : text.trim()).slice(0, max);
+}
+
+/** The current assignee if a claim would take the card from someone else, otherwise null. */
+export function claimConflict(card: Card, op: { assignee: string; force?: boolean }): string | null {
+  return card.assignee && card.assignee !== op.assignee && !op.force ? card.assignee : null;
+}
+
+/**
+ * Fills in fields added after a project was first saved: card numbers (in
+ * board order, so older projects get sensible #1, #2, ...) and assignees.
+ * Returns the same object if nothing needed changing.
+ */
+export function normalizeDoc(doc: Doc): Doc {
+  const cards = Object.values(doc.cards);
+  const seen = new Set<number>();
+  const valid = (n: unknown): n is number => Number.isInteger(n) && (n as number) > 0;
+  let ok = valid(doc.nextCardNumber) && Array.isArray(doc.documentIds) && !!doc.documents;
+  for (const card of cards) {
+    if (!valid(card.number) || seen.has(card.number) || card.number >= doc.nextCardNumber || typeof card.assignee !== "string") {
+      ok = false;
+      break;
+    }
+    seen.add(card.number);
+  }
+  if (ok) return doc;
+
+  const ordered = [...doc.columns.flatMap((c) => c.cardIds), ...Object.keys(doc.cards)];
+  const taken = new Set<number>();
+  const keep = new Set<string>();
+  for (const id of ordered) {
+    const n = doc.cards[id]?.number;
+    if (!keep.has(id) && valid(n) && !taken.has(n)) {
+      taken.add(n);
+      keep.add(id);
+    }
+  }
+  let next = Math.max(0, ...taken) + 1;
+  const fixed: Record<string, Card> = {};
+  for (const id of ordered) {
+    const card = doc.cards[id];
+    if (!card || fixed[id]) continue;
+    fixed[id] = { ...card, number: keep.has(id) ? card.number : next++, assignee: typeof card.assignee === "string" ? card.assignee : "" };
+  }
+  return {
+    ...doc,
+    documentIds: doc.documentIds ?? [],
+    documents: doc.documents ?? {},
+    cards: fixed,
+    nextCardNumber: Math.max(next, valid(doc.nextCardNumber) ? doc.nextCardNumber : 1),
+  };
 }
 
 /**
@@ -44,6 +101,7 @@ export function applyOp(doc: Doc, op: Op, now: number): Doc {
       cards: {},
       documentIds: [],
       documents: {},
+      nextCardNumber: 1,
       createdAt: now,
       updatedAt: now,
     };
@@ -91,11 +149,26 @@ export function applyOp(doc: Doc, op: Op, now: number): Doc {
       if (Object.keys(doc.cards).length >= LIMITS.cards) return doc;
       const col = doc.columns.find((c) => c.id === op.columnId);
       if (!col) return doc;
-      const card: Card = { ...op.card, createdAt: now, updatedAt: now };
+      const card: Card = { ...op.card, number: doc.nextCardNumber, createdAt: now, updatedAt: now };
       return touch({
         cards: { ...doc.cards, [card.id]: card },
         columns: doc.columns.map((c) => (c === col ? { ...c, cardIds: insertAt(c.cardIds, card.id, op.index) } : c)),
+        nextCardNumber: doc.nextCardNumber + 1,
       });
+    }
+
+    case "claimCard": {
+      const card = doc.cards[op.id];
+      if (!card || card.assignee === op.assignee) return doc;
+      if (claimConflict(card, op)) return doc;
+      return touch({ cards: { ...doc.cards, [op.id]: { ...card, assignee: op.assignee, updatedAt: now } } });
+    }
+
+    case "appendToCard": {
+      const card = doc.cards[op.id];
+      if (!card || !op.text.trim()) return doc;
+      const description = appendText(card.description, op.text, LIMITS.description);
+      return touch({ cards: { ...doc.cards, [op.id]: { ...card, description, updatedAt: now } } });
     }
 
     case "updateCard": {
@@ -145,6 +218,13 @@ export function applyOp(doc: Doc, op: Op, now: number): Doc {
       const document = doc.documents[op.id];
       if (!document) return doc;
       return touch({ documents: { ...doc.documents, [op.id]: { ...document, ...op.patch, updatedAt: now } } });
+    }
+
+    case "appendToDocument": {
+      const document = doc.documents[op.id];
+      if (!document || !op.text.trim()) return doc;
+      const body = appendText(document.body, op.text, LIMITS.body);
+      return touch({ documents: { ...doc.documents, [op.id]: { ...document, body, updatedAt: now } } });
     }
 
     case "deleteDocument": {
