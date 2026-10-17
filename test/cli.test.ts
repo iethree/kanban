@@ -101,3 +101,15 @@ describe("formatting", () => {
     );
   });
 });
+
+describe("activity lines", () => {
+  test("show who made each change", async () => {
+    const { formatActivity } = await import("../src/cli/lib");
+    const at = Date.UTC(2026, 9, 17, 9, 30);
+    const card = { id: "c", number: 7, title: "user field" };
+    const moved = { kind: "card.moved", card, from: { id: "a", name: "Backlog" }, to: { id: "b", name: "Done" }, at, seq: 1 } as const;
+    expect(formatActivity({ ...moved, user: "agent" })).toBe("2026-10-17 09:30 UTC  agent  #7 user field: Backlog → Done");
+    expect(formatActivity({ ...moved, user: "user" })).toBe("2026-10-17 09:30 UTC  user   #7 user field: Backlog → Done");
+    expect(formatActivity(moved)).toBe("2026-10-17 09:30 UTC         #7 user field: Backlog → Done");
+  });
+});

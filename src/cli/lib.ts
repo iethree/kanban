@@ -219,7 +219,7 @@ export function formatCard(card: BoardCard, ref: ProjectRef, projectTitle: strin
   ].join("\n");
 }
 
-/** One feed entry as a line: "2026-10-15 14:03 UTC  #12 Fix login: Backlog → In progress". */
+/** One feed entry as a line: "2026-10-15 14:03 UTC  agent  #12 Fix login: Backlog → In progress". */
 export function formatActivity(e: ActivityEntry, s: Style = plain): string {
   const card = (c: { number: number; title: string }) => `${num(s, c.number)} ${c.title || "Untitled"}`;
   const what = (() => {
@@ -256,7 +256,9 @@ export function formatActivity(e: ActivityEntry, s: Style = plain): string {
         return `document ${e.kind.split(".")[1]}: ${e.document.title || "Untitled"}`;
     }
   })();
-  return `${s.dim(timestamp(e.at))}  ${what}`;
+  // Who made the change; blank for entries recorded before attribution existed.
+  const who = (e.user ?? "").padEnd(5);
+  return `${s.dim(timestamp(e.at))}  ${e.user === "agent" ? s.cyan(who) : s.dim(who)}  ${what}`;
 }
 
 /** A progress note appended to a card: "**2026-10-15 14:03 UTC · claude:** text". */

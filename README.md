@@ -76,7 +76,7 @@ and a unique prefix is enough. Any text argument can be `-` to read from stdin.
 | `kanban update <card> [--title T] [--priority P] [--size S] [--assignee NAME] [--description TEXT\|-]` | Change fields (`--description` replaces the whole text) |
 | `kanban claim <card> [--force]` / `kanban release <card>` | Set or clear the assignee without moving the card |
 | `kanban delete <card> --yes` | Delete a card |
-| `kanban activity [--limit N]` | Recent changes, oldest first: moves, claims, edits and notes (default 20) |
+| `kanban activity [--limit N]` | Recent changes, oldest first: moves, claims, edits and notes, each marked `user` or `agent` (default 20) |
 | `kanban docs` | List documents |
 | `kanban doc <title\|id>` | Print a document's Markdown |
 | `kanban doc write <title> [file\|-]` | Create or replace a document |
@@ -121,6 +121,7 @@ Agents without a shell can use the API directly. `/llms.txt` explains the app an
 | --- | --- | --- |
 | GET | `/api/p/<id>` | Project as JSON (same shape as an export) |
 | GET | `/api/p/<id>/llms.txt` | Instructions and a Markdown snapshot of the board |
+| GET | `/api/p/<id>/activity?limit&before` | Activity feed, newest first. Each entry's `user` is `"user"` (made in the browser) or `"agent"` (made through this API) |
 | GET | `/api/p/<id>/documents/<docId>` | One document as Markdown with front matter |
 | POST | `/api/p/<id>/ops` | `{"ops": [...]}`: batch edits, validated together, broadcast live |
 | POST | `/api/p/<id>/import` | Replace the whole project with an export file |

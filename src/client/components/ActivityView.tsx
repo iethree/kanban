@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Columns3, FileText, FolderPlus, MessageSquareText, Pencil, Trash2, UserRound } from "lucide-react";
-import type { ActivityEntry, CardRef, ColumnRef } from "../../shared/activity";
+import { Bot, Columns3, FileText, FolderPlus, MessageSquareText, Pencil, Trash2, UserRound } from "lucide-react";
+import type { ActivityEntry, Actor, CardRef, ColumnRef } from "../../shared/activity";
 import { FALLBACK_ICON, columnIcon, matchColumnIcon } from "../../shared/column-icons";
 import type { Doc } from "../../shared/types";
 import { navigate } from "../lib/router";
@@ -99,6 +99,7 @@ export function ActivityView({
                   <div className="activity-text">{describe(entry, ctx)}</div>
                   {entry.kind === "card.noted" && <Markdown source={entry.text} className="activity-note" />}
                 </div>
+                {entry.user && <ActorBadge user={entry.user} />}
                 <time className="activity-time" dateTime={new Date(entry.at).toISOString()} title={new Date(entry.at).toLocaleString()}>
                   {timeAgo(entry.at)}
                 </time>
@@ -122,6 +123,20 @@ export function ActivityView({
 }
 
 type Ctx = { doc: Doc; basePath: string; onOpenCard: (id: string) => void };
+
+/** Who made the change: someone in the browser ("user") or a client of the HTTP API ("agent"). */
+function ActorBadge({ user }: { user: Actor }) {
+  const Icon = user === "agent" ? Bot : UserRound;
+  return (
+    <span
+      className={`activity-actor is-${user}`}
+      title={user === "agent" ? "Made through the API (CLI, script or AI agent)" : "Made in the browser"}
+    >
+      <Icon size={12} aria-hidden />
+      {user}
+    </span>
+  );
+}
 
 function groupByDay(entries: ActivityEntry[]): [string, ActivityEntry[]][] {
   const groups = new Map<string, ActivityEntry[]>();

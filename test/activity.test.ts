@@ -94,6 +94,12 @@ describe("mergeActivity", () => {
 
   test("keeps separate entries for other cards or after the window", () => {
     expect(mergeActivity(edited({}, 0), edited({}, 10, "c2"), 10)).toBeNull();
+  });
+
+  test("edits by different actors stay separate entries", () => {
+    const byUser = { ...edited({ priority: ["none", "low"] }, 0), user: "user" as const };
+    expect(mergeActivity(byUser, edited({ size: ["none", "s"] }, 10), 10, "agent")).toBeNull();
+    expect(mergeActivity(byUser, edited({ size: ["none", "s"] }, 10), 10, "user")).toMatchObject({ seq: 7, user: "user" });
     expect(mergeActivity(edited({}, 0), edited({}, MERGE_WINDOW_MS + 1), MERGE_WINDOW_MS + 1)).toBeNull();
   });
 });

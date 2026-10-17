@@ -225,6 +225,7 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
           card={openCardEntry.card}
           column={openCardEntry.column}
           columns={doc.columns}
+          cards={doc.cards}
           dispatch={dispatch}
           onClose={() => setOpenCardId(null)}
         />

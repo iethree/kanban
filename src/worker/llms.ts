@@ -44,7 +44,7 @@ No authentication: the project URL is the credential. Send JSON with \`Content-T
 | --- | --- | --- |
 | GET | \`${base}\` | Full project as JSON: columns in order, each with its cards in order, plus documents. |
 | GET | \`${base}/llms.txt\` | This project's instructions and a Markdown snapshot of the board. |
-| GET | \`${base}/activity?limit=50&before=<seq>\` | Recent changes, newest first: \`{"entries": [...], "more": bool}\`. Each entry has \`seq\`, \`at\` (ms) and \`kind\` (\`card.created\`, \`card.moved\`, \`card.edited\`, \`card.claimed\`, \`card.noted\`, \`card.deleted\`, \`column.*\`, \`document.*\`, \`project.*\`). Pass the last \`seq\` as \`before\` for older ones. |
+| GET | \`${base}/activity?limit=50&before=<seq>\` | Recent changes, newest first: \`{"entries": [...], "more": bool}\`. Each entry has \`seq\`, \`at\` (ms), \`user\` (\`"user"\` for edits made in the browser, \`"agent"\` for edits made through this API) and \`kind\` (\`card.created\`, \`card.moved\`, \`card.edited\`, \`card.claimed\`, \`card.noted\`, \`card.deleted\`, \`column.*\`, \`document.*\`, \`project.*\`). Pass the last \`seq\` as \`before\` for older ones. |
 | GET | \`${base}/documents/<documentId>\` | One document as raw Markdown, with its title and timestamps as front matter. |
 | POST | \`${base}/ops\` | Apply edits. Body: \`{"ops": [op, ...]}\` (max 100). Applied in order and shown live to anyone viewing the board. |
 | POST | \`${base}/import\` | Replace the **entire** project with an export file. Destructive — only if a human asks. |

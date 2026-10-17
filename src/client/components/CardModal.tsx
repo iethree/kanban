@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import { LIMITS, PRIORITIES, SIZES, type Card, type CardFields, type Column, type Op } from "../../shared/types";
 import { useRemoteDraft } from "../lib/useRemoteDraft";
+import { AssigneeInput } from "./AssigneeInput";
 import { MarkdownField } from "./Markdown";
 import { Modal, PRIORITY_LABEL, PriorityIcon, timeAgo, useAutosize } from "./ui";
 
@@ -9,18 +10,20 @@ export function CardModal({
   card,
   column,
   columns,
+  cards,
   dispatch,
   onClose,
 }: {
   card: Card;
   column: Column;
   columns: Column[];
+  /** Every card in the project, for suggesting assignees. */
+  cards: Record<string, Card>;
   dispatch: (op: Op) => void;
   onClose: () => void;
 }) {
   const update = (patch: Partial<CardFields>) => dispatch({ type: "updateCard", id: card.id, patch });
   const title = useRemoteDraft(card.title, (title) => update({ title }));
-  const assignee = useRemoteDraft<HTMLInputElement>(card.assignee, (assignee) => update({ assignee: assignee.trim() }));
   const titleRef = useRef<HTMLTextAreaElement>(null);
   useAutosize(titleRef, title.value);
 
@@ -107,16 +110,11 @@ export function CardModal({
               <label className="side-label" htmlFor="card-assignee">
                 Assignee
               </label>
-              <input
+              <AssigneeInput
                 id="card-assignee"
-                className="text-input"
-                placeholder="Unassigned"
-                maxLength={LIMITS.assignee}
-                autoComplete="off"
-                {...assignee}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                }}
+                value={card.assignee}
+                cards={cards}
+                onCommit={(assignee) => update({ assignee })}
               />
             </div>
 

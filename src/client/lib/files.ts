@@ -37,7 +37,8 @@ export async function uploadProject(projectId: string, data: unknown): Promise<D
   const doc = importDoc(data);
   const res = await fetch(`/api/p/${projectId}/import`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // Marks this import as the user's in the activity feed (other HTTP callers count as agents).
+    headers: { "Content-Type": "application/json", "X-Kanban-Actor": "user" },
     body: JSON.stringify(data),
   });
   if (!res.ok) {

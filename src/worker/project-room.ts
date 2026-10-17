@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { describeOp, mergeActivity, type ActivityEntry, type ActivityEvent } from "../shared/activity";
+import { describeOp, mergeActivity, type ActivityEntry, type ActivityEvent, type Actor } from "../shared/activity";
 import { randomProjectColor } from "../shared/colors";
 import { needsGuess } from "../shared/column-icons";
 import { applyOp, claimConflict, emptyDoc, normalizeDoc } from "../shared/reducer";
@@ -95,20 +95,23 @@ export class ProjectRoom extends DurableObject<Env> {
 
   // -- activity -------------------------------------------------------------
 
-  /** Writes feed entries (merging bursts of edits into the latest row) and pushes them to browsers. */
-  private record(events: ActivityEvent[], at: number) {
+  /**
+   * Writes feed entries attributed to `user` (merging bursts of edits by the
+   * same actor into the latest row) and pushes them to browsers.
+   */
+  private record(events: ActivityEvent[], at: number, user: Actor) {
     if (!events.length) return;
     const written: ActivityEntry[] = [];
     for (const event of events) {
       const last = this.latestActivity();
-      const merged = last && mergeActivity(last, event, at);
+      const merged = last && mergeActivity(last, event, at, user);
       if (merged) {
         const { seq, ...data } = merged;
         this.sql.exec(`UPDATE activity SET at = ?, data = ? WHERE seq = ?`, at, JSON.stringify(data), seq);
         written.push(merged);
         continue;
       }
-      const data = { ...event, at };
+      const data = { ...event, at, user };
       const seq = this.sql
         .exec<{ seq: number }>(`INSERT INTO activity (at, data) VALUES (?, ?) RETURNING seq`, at, JSON.stringify(data))
         .one().seq;
@@ -134,15 +137,18 @@ export class ProjectRoom extends DurableObject<Env> {
     };
   }
 
-  /** Applies a validated op, persists and broadcasts it. Returns whether anything changed. */
-  private commit(op: Op, opId: string): boolean {
+  /**
+   * Applies a validated op, persists and broadcasts it, and records it in the
+   * activity feed as done by `user`. Returns whether anything changed.
+   */
+  private commit(op: Op, opId: string, user: Actor): boolean {
     const at = Date.now();
     const prev = this.load();
     const next = applyOp(prev, op, at);
     if (next === prev) return false;
     this.save(prev, next);
     this.broadcast({ t: "op", opId, op, at, version: this.version });
-    this.record(describeOp(prev, next, op), at);
+    this.record(describeOp(prev, next, op), at, user);
     if (op.type === "init" || op.type === "addColumn" || op.type === "renameColumn" || op.type === "setColumnIcon") {
       this.guessIcons();
     }
@@ -166,7 +172,8 @@ export class ProjectRoom extends DurableObject<Env> {
       .then((guesses) => {
         for (const column of targets) {
           const icon = guesses.get(column.id);
-          if (icon) this.commit({ type: "guessColumnIcon", id: column.id, name: column.name, icon }, `guess-${newId()}`);
+          // Icon guesses don't appear in the feed; they're automated, so count them as the agent's.
+          if (icon) this.commit({ type: "guessColumnIcon", id: column.id, name: column.name, icon }, `guess-${newId()}`, "agent");
         }
       })
       .catch((err) => console.error("Column icon guess failed:", err))
@@ -256,7 +263,7 @@ export class ProjectRoom extends DurableObject<Env> {
         if (prev.initialized) next.createdAt = prev.createdAt;
         this.save(prev, next);
         this.broadcast({ t: "reset", doc: next, version: this.version });
-        this.record([{ kind: "project.imported", title: next.title }], Date.now());
+        this.record([{ kind: "project.imported", title: next.title }], Date.now(), actorOf(request));
         this.guessIcons();
         return Response.json({ ok: true });
       }
@@ -316,7 +323,8 @@ export class ProjectRoom extends DurableObject<Env> {
 
     const results = ops.map((op) => {
       const id = opTargetId(op);
-      const changed = this.commit(op, `http-${newId()}`);
+      // Everything sent to the HTTP API is attributed to "agent".
+      const changed = this.commit(op, `http-${newId()}`, "agent");
       const number = id ? this.load().cards[id]?.number : undefined;
       return { type: op.type, id, ...(number ? { number } : {}), changed };
     });
@@ -371,7 +379,8 @@ export class ProjectRoom extends DurableObject<Env> {
     const opId = msg.opId.slice(0, 64);
     const op = sanitizeOp(msg.op);
     // Invalid or no-op ops are acked back so the sender drops them from its pending queue.
-    if (!op || !this.commit(op, opId)) ws.send(JSON.stringify({ t: "ack", opId } satisfies ServerMessage));
+    // Edits over the socket come from the browser app, so they're the user's.
+    if (!op || !this.commit(op, opId, "user")) ws.send(JSON.stringify({ t: "ack", opId } satisfies ServerMessage));
   }
 
   override async webSocketClose(ws: WebSocket, code: number, reason: string) {
@@ -401,6 +410,13 @@ function opTargetId(op: Op): string | undefined {
       return op.id;
   }
 }
+
+/**
+ * Who sent an HTTP request that isn't an op batch (currently only /import).
+ * The browser app marks its own uploads with `X-Kanban-Actor: user`; anything
+ * else over HTTP is treated as an agent.
+ */
+const actorOf = (request: Request): Actor => (request.headers.get("X-Kanban-Actor") === "user" ? "user" : "agent");
 
 /** Ops whose `id` is a card, which HTTP callers may give as a card number (12 or "#12"). */
 const CARD_OPS = new Set(["updateCard", "moveCard", "deleteCard", "claimCard", "appendToCard"]);

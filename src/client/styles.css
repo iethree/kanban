@@ -1170,6 +1170,94 @@ button.add-column:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/* Text input with a suggestion dropdown (e.g. assignee). */
+.combobox {
+  position: relative;
+}
+
+.combobox .text-input {
+  padding-right: 30px;
+}
+
+.combobox-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+}
+
+.combobox-clear:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.combobox-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 232px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  animation: pop-in 0.12s ease-out;
+}
+
+.combobox-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.combobox-option.is-active {
+  background: var(--hover);
+}
+
+.combobox-option.is-current .combobox-name {
+  font-weight: 600;
+}
+
+.combobox-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combobox-name mark {
+  background: none;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  text-underline-offset: 2px;
+}
+
+.combobox-meta {
+  flex: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
 .text-input {
   width: 100%;
   height: 32px;
@@ -1361,6 +1449,25 @@ button.add-column:hover:not(:disabled) {
 
 .activity-note > :last-child {
   margin-bottom: 0;
+}
+
+.activity-actor {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.activity-actor.is-agent {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
 }
 
 .activity-time {

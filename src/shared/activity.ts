@@ -38,8 +38,18 @@ export type ActivityEvent =
   | { kind: "document.edited"; document: { id: string; title: string } }
   | { kind: "document.deleted"; document: { id: string; title: string } };
 
-/** One row of a project's activity feed. `seq` increases; an entry keeps its seq when later edits merge into it. */
-export type ActivityEntry = ActivityEvent & { seq: number; at: number };
+/**
+ * Who made a change: "user" for edits made in the browser app, "agent" for
+ * edits made through the HTTP API (the CLI, scripts, AI agents).
+ */
+export type Actor = "user" | "agent";
+
+/**
+ * One row of a project's activity feed. `seq` increases; an entry keeps its seq
+ * when later edits merge into it. `user` is missing on entries recorded before
+ * attribution existed.
+ */
+export type ActivityEntry = ActivityEvent & { seq: number; at: number; user?: Actor };
 
 /** Edits to the same card or document this close together become one entry. */
 export const MERGE_WINDOW_MS = 10 * 60 * 1000;
@@ -155,11 +165,14 @@ export function describeOp(prev: Doc, next: Doc, op: Op): ActivityEvent[] {
 
 /**
  * Folds a new edit into the previous entry when both edit the same card or
- * document within MERGE_WINDOW_MS, so typing in a description doesn't flood
- * the feed. Returns the merged entry, or null if they should stay separate.
+ * document within MERGE_WINDOW_MS and were made by the same actor, so typing
+ * in a description doesn't flood the feed. Returns the merged entry, or null
+ * if they should stay separate.
  */
-export function mergeActivity(last: ActivityEntry, event: ActivityEvent, at: number): ActivityEntry | null {
+export function mergeActivity(last: ActivityEntry, event: ActivityEvent, at: number, user?: Actor): ActivityEntry | null {
   if (at - last.at > MERGE_WINDOW_MS) return null;
+  // A person's edit and an agent's edit stay separate so each is attributed correctly.
+  if (last.user !== user) return null;
   if (last.kind === "card.edited" && event.kind === "card.edited" && last.card.id === event.card.id) {
     const changes: CardChanges = { ...last.changes };
     for (const key of ["title", "priority", "size", "assignee"] as const) {
