@@ -64,7 +64,7 @@ export function StatsView({
         <StatTile
           label="Median time to done"
           value={stats.medianLeadDays}
-          format={(n) => (n < 1 ? `${Math.max(1, Math.round(n * 24))}h` : `${n < 10 ? n.toFixed(1).replace(/\.0$/, "") : Math.round(n)}d`)}
+          format={(n) => (n * 24 < 1 ? "<1h" : n < 1 ? `${Math.round(n * 24)}h` : `${n < 10 ? n.toFixed(1).replace(/\.0$/, "") : Math.round(n)}d`)}
           note="from creation, cards completed in range"
         />
       </div>
