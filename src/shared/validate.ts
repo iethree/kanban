@@ -1,5 +1,6 @@
 import type { ColumnIcon } from "./column-icons";
 import type { Card, CardFields, Column, Doc, DocumentFields, Op, Priority, Size, ProjectDocument } from "./types";
+import { isColor } from "./colors";
 import { isColumnIcon } from "./column-icons";
 import { normalizeDoc } from "./reducer";
 import { LIMITS, PRIORITIES, SIZES } from "./types";
@@ -83,7 +84,9 @@ export function sanitizeOp(raw: unknown): Op | null {
         if (columns.some((x) => x.id === cid)) continue;
         columns.push({ id: cid, name });
       }
-      return { type: "init", title, description, columns };
+      const op: Op = { type: "init", title, description, columns };
+      if (isColor(raw.color)) op.color = raw.color.toLowerCase();
+      return op;
     }
     case "updateProject": {
       const op: Op = { type: "updateProject" };
@@ -94,6 +97,10 @@ export function sanitizeOp(raw: unknown): Op | null {
       if (raw.description !== undefined) {
         op.description = str(raw.description, LIMITS.description);
         if (op.description === undefined) return null;
+      }
+      if (raw.color !== undefined) {
+        if (!isColor(raw.color)) return null;
+        op.color = raw.color.toLowerCase();
       }
       return op;
     }
@@ -215,6 +222,7 @@ export interface ExportedProject {
   project: {
     title: string;
     description: string;
+    color?: string;
     createdAt: number;
     updatedAt: number;
     nextCardNumber: number;
@@ -236,6 +244,7 @@ export function exportDoc(doc: Doc): ExportedProject {
     project: {
       title: doc.title,
       description: doc.description,
+      ...(doc.color ? { color: doc.color } : {}),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
       nextCardNumber: doc.nextCardNumber,
@@ -265,6 +274,7 @@ export function importDoc(raw: unknown, now = Date.now()): Doc {
     initialized: true,
     title: str(project.title, LIMITS.title) ?? "Imported project",
     description: str(project.description, LIMITS.description) ?? "",
+    color: isColor(project.color) ? project.color.toLowerCase() : "",
     columns: [],
     cards: {},
     documentIds: [],

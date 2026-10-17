@@ -95,6 +95,46 @@ export function MenuItem({
   );
 }
 
+/** A row of colour swatches inside a Menu; picking one closes the menu. */
+export function MenuSwatches({
+  label,
+  colors,
+  value,
+  onSelect,
+}: {
+  label: string;
+  colors: readonly string[];
+  value: string;
+  onSelect: (color: string) => void;
+}) {
+  const close = useContext(MenuContext);
+  return (
+    <div className="menu-swatches" role="group" aria-label={label}>
+      <span className="menu-swatches-label">{label}</span>
+      <div className="menu-swatches-grid">
+        {colors.map((color) => (
+          <button
+            key={color}
+            type="button"
+            role="menuitemradio"
+            aria-checked={color === value}
+            aria-label={color}
+            title={color}
+            className="swatch"
+            style={{ background: color }}
+            onClick={() => {
+              close();
+              onSelect(color);
+            }}
+          >
+            {color === value && <Check size={12} strokeWidth={3} aria-hidden />}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export const MenuSeparator = () => <div className="menu-sep" role="separator" />;
 
 // -- Modal ------------------------------------------------------------------
@@ -317,10 +357,11 @@ export function ThemeToggle() {
   );
 }
 
-export function Logo() {
+/** The app mark; a project page tints it with the project's colour. */
+export function Logo({ color }: { color?: string }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="logo">
-      <rect x="1" y="1" width="18" height="18" rx="5" className="logo-bg" />
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className={`logo${color ? " is-tinted" : ""}`}>
+      <rect x="1" y="1" width="18" height="18" rx="5" className="logo-bg" style={color ? { fill: color } : undefined} />
       <rect x="5" y="5" width="2.6" height="10" rx="1.3" className="logo-fg" />
       <rect x="8.7" y="5" width="2.6" height="6.5" rx="1.3" className="logo-fg" />
       <rect x="12.4" y="5" width="2.6" height="8" rx="1.3" className="logo-fg" />

@@ -43,6 +43,8 @@ export interface Doc {
   initialized: boolean;
   title: string;
   description: string;
+  /** Hex colour for the logo and favicon; "" on projects made before colours existed (see colors.ts). */
+  color: string;
   columns: Column[];
   cards: Record<string, Card>;
   documentIds: string[];
@@ -56,8 +58,8 @@ export type CardFields = Pick<Card, "title" | "description" | "priority" | "size
 export type DocumentFields = Pick<ProjectDocument, "title" | "body">;
 
 export type Op =
-  | { type: "init"; title: string; description: string; columns: { id: string; name: string }[] }
-  | { type: "updateProject"; title?: string; description?: string }
+  | { type: "init"; title: string; description: string; color?: string; columns: { id: string; name: string }[] }
+  | { type: "updateProject"; title?: string; description?: string; color?: string }
   | { type: "addColumn"; id: string; name: string; index?: number }
   | { type: "renameColumn"; id: string; name: string }
   | { type: "moveColumn"; id: string; index: number }

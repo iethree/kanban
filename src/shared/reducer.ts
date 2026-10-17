@@ -6,6 +6,7 @@ export function emptyDoc(): Doc {
     initialized: false,
     title: "",
     description: "",
+    color: "",
     columns: [],
     cards: {},
     documentIds: [],
@@ -77,6 +78,7 @@ export function normalizeDoc(doc: Doc): Doc {
   }
   return {
     ...doc,
+    color: doc.color ?? "",
     documentIds: doc.documentIds ?? [],
     documents: doc.documents ?? {},
     cards: fixed,
@@ -97,6 +99,7 @@ export function applyOp(doc: Doc, op: Op, now: number): Doc {
       initialized: true,
       title: op.title,
       description: op.description,
+      color: op.color ?? "",
       columns: op.columns.map((c) => ({ id: c.id, name: c.name, cardIds: [] })),
       cards: {},
       documentIds: [],
@@ -115,6 +118,7 @@ export function applyOp(doc: Doc, op: Op, now: number): Doc {
       const next: Partial<Doc> = {};
       if (op.title !== undefined) next.title = op.title;
       if (op.description !== undefined) next.description = op.description;
+      if (op.color !== undefined) next.color = op.color;
       return touch(next);
     }
 

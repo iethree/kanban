@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
+import { randomProjectColor } from "../../shared/colors";
 import { DEFAULT_COLUMNS, LIMITS, type Op } from "../../shared/types";
 import { newId } from "../../shared/validate";
 import { Modal } from "./ui";
@@ -32,6 +33,7 @@ export function SetupDialog({ onSubmit, onCancel }: { onSubmit: (op: Op) => void
             type: "init",
             title: title.trim() || "Untitled project",
             description: description.trim(),
+            color: randomProjectColor(),
             columns: valid.map((c) => ({ id: c.id, name: c.name.trim() })),
           });
         }}

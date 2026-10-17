@@ -3,6 +3,8 @@ import { useSyncExternalStore } from "react";
 export interface RecentProject {
   id: string;
   title: string;
+  /** The project's colour when last visited; missing for entries saved before colours existed. */
+  color?: string;
   visitedAt: number;
 }
 
@@ -32,9 +34,9 @@ function write(list: RecentProject[]) {
   listeners.forEach((l) => l());
 }
 
-export function rememberProject(id: string, title: string) {
+export function rememberProject(id: string, title: string, color?: string) {
   const list = read().filter((p) => p.id !== id);
-  write([{ id, title, visitedAt: Date.now() }, ...list].slice(0, MAX));
+  write([{ id, title, ...(color ? { color } : {}), visitedAt: Date.now() }, ...list].slice(0, MAX));
 }
 
 export function forgetProject(id: string) {

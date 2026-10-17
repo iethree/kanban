@@ -107,8 +107,10 @@ Fields marked optional may be left out.
 **Project**
 
 \`\`\`json
-{"type": "updateProject", "title": "...", "description": "..."}
+{"type": "updateProject", "title": "...", "description": "...", "color": "#386de6"}
 \`\`\`
+
+\`color\` is the project's hex colour, used for its logo and favicon. New projects get a random one.
 
 Limits: titles ${LIMITS.title} chars, card descriptions ${LIMITS.description.toLocaleString("en-US")} chars,
 document bodies ${LIMITS.body.toLocaleString("en-US")} chars, ${LIMITS.columns} columns, ${LIMITS.cards.toLocaleString("en-US")} cards,

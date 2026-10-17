@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { randomProjectColor } from "../shared/colors";
 import { needsGuess } from "../shared/column-icons";
 import { applyOp, claimConflict, emptyDoc, normalizeDoc } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
@@ -295,6 +296,7 @@ export class ProjectRoom extends DurableObject<Env> {
     if (op.type === "init") {
       op.title ??= "Untitled project";
       op.description ??= "";
+      op.color ??= randomProjectColor();
     }
     return op;
   }

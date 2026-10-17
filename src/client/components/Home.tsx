@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Bot, Ellipsis, Plus, Search, Upload, X } from "lucide-react";
+import { projectColor } from "../../shared/colors";
 import { toShortId } from "../../shared/ids";
 import { projectPath } from "../../shared/urls";
 import { navigate } from "../lib/router";
@@ -25,7 +26,7 @@ export function Home() {
       setImporting(true);
       const id = toShortId(crypto.randomUUID());
       const doc = await uploadProject(id, file.data);
-      rememberProject(id, doc.title);
+      rememberProject(id, doc.title, projectColor(doc));
       navigate(projectPath(id, doc.title));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -99,6 +100,7 @@ export function Home() {
                       navigate(projectPath(p.id, p.title));
                     }}
                   >
+                    <span className="recent-dot" style={p.color ? { background: p.color } : undefined} aria-hidden />
                     <span className="recent-title">{p.title || "Untitled project"}</span>
                     <span className="recent-meta">
                       <code>{toShortId(p.id).slice(0, 8)}</code>

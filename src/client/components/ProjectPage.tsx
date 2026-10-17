@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Download, Ellipsis, Link2, Upload } from "lucide-react";
+import { PROJECT_COLORS, faviconUrl, projectColor } from "../../shared/colors";
 import { LIMITS } from "../../shared/types";
 import { toShortId } from "../../shared/ids";
 import { projectPath, type ProjectRoute } from "../../shared/urls";
@@ -12,7 +13,7 @@ import { CardModal } from "./CardModal";
 import { DocumentsView } from "./Documents";
 import { ListView } from "./ListView";
 import { SetupDialog } from "./SetupDialog";
-import { EditableText, Logo, Menu, MenuItem, MenuSeparator, ThemeToggle } from "./ui";
+import { EditableText, Logo, Menu, MenuItem, MenuSeparator, MenuSwatches, ThemeToggle } from "./ui";
 
 export type ProjectView = ProjectRoute["view"];
 
@@ -33,9 +34,13 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
     if (location.pathname !== canonical) history.replaceState(null, "", canonical + location.search);
   }, [projectId, doc?.initialized, doc?.title, viewSuffix]);
 
+  const color = doc?.initialized ? projectColor(doc) : undefined;
+
   useEffect(() => {
-    if (doc?.initialized) rememberProject(projectId, doc.title);
-  }, [projectId, doc?.initialized, doc?.title]);
+    if (doc?.initialized) rememberProject(projectId, doc.title, color);
+  }, [projectId, doc?.initialized, doc?.title, color]);
+
+  useProjectFavicon(color);
 
   useEffect(() => {
     document.title = doc?.initialized ? `${doc.title || "Untitled project"} · Kanban` : "Kanban";
@@ -102,7 +107,7 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
             navigate("/");
           }}
         >
-          <Logo />
+          <Logo color={color} />
           <span>Kanban</span>
         </a>
         <span className="crumb-sep">/</span>
@@ -127,6 +132,17 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
               Import JSON…
             </MenuItem>
             <MenuSeparator />
+            {doc?.initialized && (
+              <>
+                <MenuSwatches
+                  label="Project colour"
+                  colors={PROJECT_COLORS}
+                  value={color ?? ""}
+                  onSelect={(next) => dispatch({ type: "updateProject", color: next })}
+                />
+                <MenuSeparator />
+              </>
+            )}
             <MenuItem icon={<Link2 size={14} />} onSelect={copyLink}>
               Copy link
             </MenuItem>
@@ -250,6 +266,19 @@ function SyncStatus({ status, peers, pending }: { status: ConnectionStatus; peer
       {label}
     </span>
   );
+}
+
+/** Swaps the tab icon for one in the project's colour while the page is open. */
+function useProjectFavicon(color: string | undefined) {
+  useEffect(() => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!link || !color) return;
+    const original = link.href;
+    link.href = faviconUrl(color);
+    return () => {
+      link.href = original;
+    };
+  }, [color]);
 }
 
 function useToast() {
