@@ -93,6 +93,7 @@ named like "Done" or "Shipped" (falling back to the last), unless you pass `--co
 | `--as NAME` / `KANBAN_AGENT` | Your name for claims and notes (default: `agent` in `.kanban`, then your username) |
 | `--project REF` / `KANBAN_PROJECT` | Project URL or id, overriding `.kanban` |
 | `KANBAN_ORIGIN` | Server to use when a project is given as a bare id, or for `kanban new` |
+| `--no-color` / `--color` | Turn color off or on. By default it's used only when output goes to a terminal, so agents and pipes get plain text. `NO_COLOR` and `FORCE_COLOR` are respected too. |
 
 Exit codes: `0` ok, `1` error, `2` bad usage, `3` card already claimed by someone else.
 

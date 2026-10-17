@@ -6,6 +6,7 @@ import { toProjectUuid, toShortId } from "../shared/ids";
 import { PRIORITIES, SIZES, type Card, type Priority, type Size } from "../shared/types";
 import { parseProjectPath, projectPath } from "../shared/urls";
 import type { ExportedProject } from "../shared/validate";
+import { column as columnName, link, num, person, plain, priority as priorityText, type Style } from "./style";
 
 export class CliError extends Error {
   constructor(
@@ -24,7 +25,7 @@ export interface Args {
   flags: Record<string, string | true>;
 }
 
-const BOOLEAN_FLAGS = new Set(["json", "force", "help", "version", "no-save", "yes"]);
+const BOOLEAN_FLAGS = new Set(["json", "force", "help", "version", "no-save", "yes", "color", "no-color"]);
 
 export function parseArgs(argv: string[]): Args {
   const args: Args = { _: [], flags: {} };
@@ -174,38 +175,46 @@ export function findDocument(board: ExportedProject, ref: string) {
 
 // -- formatting ---------------------------------------------------------------
 
-export function cardLine(card: Card): string {
-  const tags = [card.priority !== "none" ? card.priority : "", card.size !== "none" ? card.size.toUpperCase() : ""].filter(Boolean);
-  return [`#${card.number} ${card.title || "(untitled)"}`, tags.length ? `[${tags.join(", ")}]` : "", card.assignee ? `@${card.assignee}` : ""]
+export function cardLine(card: Card, s: Style = plain): string {
+  const tags = [
+    card.priority !== "none" ? priorityText(s, card.priority) : "",
+    card.size !== "none" ? card.size.toUpperCase() : "",
+  ].filter(Boolean);
+  return [
+    `${num(s, card.number)} ${card.title || s.dim("(untitled)")}`,
+    tags.length ? `${s.dim("[")}${tags.join(s.dim(", "))}${s.dim("]")}` : "",
+    card.assignee ? person(s, `@${card.assignee}`) : "",
+  ]
     .filter(Boolean)
     .join("  ");
 }
 
-export function formatBoard(board: ExportedProject, ref: ProjectRef): string {
+export function formatBoard(board: ExportedProject, ref: ProjectRef, s: Style = plain): string {
   const { project } = board;
-  const lines = [`${project.title || "Untitled project"}  ${pageUrl(ref, project.title)}`];
+  const lines = [`${s.bold(project.title || "Untitled project")}  ${link(s, pageUrl(ref, project.title))}`];
   for (const column of project.columns) {
-    lines.push("", `${column.name} (${column.cards.length})`);
-    lines.push(...(column.cards.length ? column.cards.map((c) => `  ${cardLine(c)}`) : ["  (empty)"]));
+    lines.push("", `${columnName(s, column.name)} ${s.dim(`(${column.cards.length})`)}`);
+    lines.push(...(column.cards.length ? column.cards.map((c) => `  ${cardLine(c, s)}`) : [`  ${s.dim("(empty)")}`]));
   }
   const docs = project.documents;
-  lines.push("", docs.length ? `Documents: ${docs.map((d) => d.title || "Untitled").join(" · ")}` : "Documents: none");
+  lines.push("", `${s.dim("Documents:")} ${docs.length ? docs.map((d) => d.title || "Untitled").join(s.dim(" · ")) : s.dim("none")}`);
   return lines.join("\n");
 }
 
 export const timestamp = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
-export function formatCard(card: BoardCard, ref: ProjectRef, projectTitle: string): string {
+export function formatCard(card: BoardCard, ref: ProjectRef, projectTitle: string, s: Style = plain): string {
+  const label = (text: string) => s.dim(text.padEnd(10));
   return [
-    `#${card.number} ${card.title || "(untitled)"}`,
-    `Status:   ${card.column.name}`,
-    `Priority: ${card.priority}`,
-    `Size:     ${card.size}`,
-    `Assignee: ${card.assignee || "(unassigned)"}`,
-    `Updated:  ${timestamp(card.updatedAt)}`,
-    `URL:      ${pageUrl(ref, projectTitle)}?card=${card.id}`,
+    `${num(s, card.number)} ${s.bold(card.title || "(untitled)")}`,
+    `${label("Status:")}${columnName(s, card.column.name)}`,
+    `${label("Priority:")}${priorityText(s, card.priority)}`,
+    `${label("Size:")}${card.size === "none" ? s.dim("none") : card.size}`,
+    `${label("Assignee:")}${card.assignee ? person(s, card.assignee) : s.dim("(unassigned)")}`,
+    `${label("Updated:")}${timestamp(card.updatedAt)}`,
+    `${label("URL:")}${link(s, `${pageUrl(ref, projectTitle)}?card=${card.id}`)}`,
     "",
-    card.description || "(no description)",
+    card.description || s.dim("(no description)"),
   ].join("\n");
 }
 
@@ -216,48 +225,88 @@ export function logEntry(text: string, who: string, now = Date.now(), label = ""
   return body.includes("\n") ? `${head}\n\n${body}` : `${head} ${body}`;
 }
 
-export function helpText(origin: string): string {
-  return `kanban — plan and track work on a shared Kanban board (${origin})
+/**
+ * Help, colored by line shape so the text itself stays the single source:
+ * section headings bold, commands cyan, and option/flag names cyan.
+ */
+export function helpText(origin: string, s: Style = plain): string {
+  if (!s.enabled) return helpBody(origin);
+  return helpBody(origin)
+    .split("\n")
+    .map((line, i) => {
+      if (i === 0) return line.replace(/^kanban/, s.bold("kanban"));
+      if (/^[A-Z][A-Za-z ]+$/.test(line)) return s.bold(line); // section heading
+      const command = line.match(/^(\s+)(kanban \S.*?)(\s{2,}.*)?$/);
+      if (command) return `${command[1]}${s.cyan(command[2]!)}${command[3] ?? ""}`;
+      const option = line.match(/^(\s+)(--\S+(?: \S+)?)(\s{2,}.*)$/);
+      if (option) return `${option[1]}${s.cyan(option[2]!)}${option[3]}`;
+      if (/^(Typical loop|Exit codes|Update):?/.test(line)) return line.replace(/^([^:]+:)/, s.bold("$1"));
+      return line;
+    })
+    .join("\n");
+}
 
-Typical loop:  kanban next → kanban start 12 → kanban log 12 "…" → kanban done 12 "…"
+const HELP_COLUMN = 34;
 
-Setup
-  kanban new <title> [--columns "Backlog,In progress,Done"]   Create a project and link this directory
-  kanban init <project-url>                                   Link this directory to an existing project
-  kanban url                                                  Print the project's web address for humans
+/** "  command    description", aligned; long commands put the description on the next line. */
+function helpRow(command: string, description = ""): string {
+  if (!description) return `  ${command}`;
+  if (command.length + 2 <= HELP_COLUMN) return `  ${command.padEnd(HELP_COLUMN)}${description}`;
+  return `  ${command}\n  ${" ".repeat(HELP_COLUMN)}${description}`;
+}
 
-Reading
-  kanban board                  Columns and cards: #number title [priority, size] @assignee
-  kanban show <card>            One card, including its description
-  kanban next [--column C]      Highest-priority unclaimed card in the first column (or C)
-  kanban docs                   List documents
-  kanban doc <title|id>         Print a document's Markdown
+function helpBody(origin: string): string {
+  const section = (title: string, rows: [string, string?][]) =>
+    [title, ...rows.map(([command, description]) => helpRow(command, description))].join("\n");
 
-Working on cards
-  kanban add <title> [--column C] [--priority P] [--size S] [--description TEXT|-]
-  kanban start <card> [--force] Claim the card and move it to the top of the in-progress column
-  kanban log <card> <text|->    Append a timestamped progress note to the card's description
-  kanban done <card> [summary]  Append the summary and move the card to the done column
-  kanban move <card> <column>   Move to the top of another column
-  kanban update <card> [--title T] [--priority P] [--size S] [--assignee NAME] [--description TEXT|-]
-  kanban claim <card> [--force] Mark yourself as working on it, without moving it
-  kanban release <card>         Clear the assignee
-  kanban delete <card> --yes
-
-Documents
-  kanban doc write <title> [file|-]    Create or replace a document
-  kanban doc append <title> <text|->   Append to a document (creates it if missing)
-
-Cards are numbers (12 or #12). Priority: ${PRIORITIES.join("|")}. Size: ${SIZES.join("|")}.
-Column and document names match case-insensitively; a unique prefix is enough.
-Text arguments can be "-" to read from stdin. Descriptions and documents are Markdown.
-
-Options
-  --json           JSON output for board, show, next, docs and doc
-  --as NAME        Who you are, for claims and log entries
-                   (default: $KANBAN_AGENT, "agent" in .kanban, then your username)
-  --project REF    Project URL or id (default: $KANBAN_PROJECT, then the nearest .kanban file)
-
-Exit codes: 0 ok, 1 error, 2 bad usage, 3 card already claimed by someone else.
-Update: curl -fsSL ${origin}/install | sh     API reference: ${origin}/llms.txt`;
+  return [
+    `kanban — plan and track work on a shared Kanban board (${origin})`,
+    "",
+    `Typical loop:  kanban next → kanban start 12 → kanban log 12 "…" → kanban done 12 "…"`,
+    "",
+    section("Setup", [
+      ["kanban new <title> [--columns A,B,C]", "Create a project and link this directory"],
+      ["kanban init <project-url>", "Link this directory to an existing project"],
+      ["kanban url", "Print the project's web address for humans"],
+    ]),
+    "",
+    section("Reading", [
+      ["kanban board", "Columns and cards: #number title [priority, size] @assignee"],
+      ["kanban show <card>", "One card, including its description"],
+      ["kanban next [--column C]", "Highest-priority unclaimed card in the first column (or C)"],
+      ["kanban docs", "List documents"],
+      ["kanban doc <title|id>", "Print a document's Markdown"],
+    ]),
+    "",
+    section("Working on cards", [
+      ["kanban add <title> [--column C] [--priority P] [--size S] [--description TEXT|-]", "Add a card"],
+      ["kanban start <card> [--force]", "Claim the card and move it to the top of the in-progress column"],
+      ["kanban log <card> <text|->", "Append a timestamped progress note to the card's description"],
+      ["kanban done <card> [summary]", "Append the summary and move the card to the done column"],
+      ["kanban move <card> <column>", "Move to the top of another column"],
+      ["kanban update <card> [--title T] [--priority P] [--size S] [--assignee NAME] [--description TEXT|-]", "Change fields"],
+      ["kanban claim <card> [--force]", "Mark yourself as working on it, without moving it"],
+      ["kanban release <card>", "Clear the assignee"],
+      ["kanban delete <card> --yes", "Delete a card"],
+    ]),
+    "",
+    section("Documents", [
+      ["kanban doc write <title> [file|-]", "Create or replace a document"],
+      ["kanban doc append <title> <text|->", "Append to a document (creates it if missing)"],
+    ]),
+    "",
+    `Cards are numbers (12 or #12). Priority: ${PRIORITIES.join("|")}. Size: ${SIZES.join("|")}.`,
+    "Column and document names match case-insensitively; a unique prefix is enough.",
+    'Text arguments can be "-" to read from stdin. Descriptions and documents are Markdown.',
+    "",
+    "Options",
+    "  --json           JSON output for board, show, next, docs and doc",
+    "  --as NAME        Who you are, for claims and log entries",
+    '                   (default: $KANBAN_AGENT, "agent" in .kanban, then your username)',
+    "  --project REF    Project URL or id (default: $KANBAN_PROJECT, then the nearest .kanban file)",
+    "  --no-color       Plain output (also: NO_COLOR=1). Color is only used in a terminal.",
+    "",
+    "Exit codes: 0 ok, 1 error, 2 bad usage, 3 card already claimed by someone else.",
+    `Update: curl -fsSL ${origin}/install | sh     API reference: ${origin}/llms.txt`,
+  ].join("\n");
 }

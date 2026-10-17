@@ -33,8 +33,9 @@ import {
   type Args,
   type ProjectRef,
 } from "./lib";
+import { colorEnabled, column as columnStyle, createStyle, link, num, person, plain, success, type Style } from "./style";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const CONFIG_FILE = ".kanban";
 
 // The server replaces this placeholder with its own origin when serving the script.
@@ -134,6 +135,10 @@ async function flagText(args: Args, name: string): Promise<string | undefined> {
   return value === "-" ? readStdin() : value;
 }
 
+// Set in main() once flags are parsed: color for stdout and stderr respectively.
+let st: Style = plain;
+let errStyle: Style = plain;
+
 const out = (text: string): void => {
   process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
 };
@@ -206,12 +211,12 @@ const commands: Record<string, Command> = {
     ]);
     if (!args.flags["no-save"]) {
       const path = writeConfig({ project: res.url });
-      out(`Created "${title}" and linked it in ${path}`);
+      out(success(st, `Created ${st.bold(title)} and linked it in ${st.dim(path)}`));
     } else {
-      out(`Created "${title}"`);
+      out(success(st, `Created ${st.bold(title)}`));
     }
-    out(res.url);
-    out("Anyone with this link can view and edit the board. Share it with your human; don't commit .kanban to a public repository.");
+    out(link(st, res.url));
+    out(st.dim("Anyone with this link can view and edit the board. Share it with your human; don't commit .kanban to a public repository."));
   },
 
   async init(args, rest) {
@@ -224,9 +229,9 @@ const commands: Record<string, Command> = {
     const url = pageUrl(ref, board.project.title);
     const agent = flag(args, "as");
     const path = writeConfig({ project: url, ...(agent ? { agent } : {}) });
-    out(`Linked ${path} to "${board.project.title}"`);
-    out(url);
-    out("Anyone with this link can view and edit the board; don't commit .kanban to a public repository.");
+    out(success(st, `Linked ${st.dim(path)} to ${st.bold(board.project.title)}`));
+    out(link(st, url));
+    out(st.dim("Anyone with this link can view and edit the board; don't commit .kanban to a public repository."));
   },
 
   async url(args) {
@@ -239,7 +244,7 @@ const commands: Record<string, Command> = {
     const ref = projectFor(args);
     const board = await new Api(ref).board();
     if (args.flags.json) return json(board);
-    out(formatBoard(board, ref));
+    out(formatBoard(board, ref, st));
   },
 
   async show(args, rest) {
@@ -250,7 +255,7 @@ const commands: Record<string, Command> = {
       const { column, ...rest } = card;
       return json({ ...rest, status: column.name, columnId: column.id });
     }
-    out(formatCard(card, ref, board.project.title));
+    out(formatCard(card, ref, board.project.title, st));
   },
 
   async next(args) {
@@ -260,9 +265,9 @@ const commands: Record<string, Command> = {
     if (!column) throw new CliError("This project has no columns.");
     const card = column && nextCard(column);
     if (args.flags.json) return json(card ? { ...card, status: column.name } : null);
-    if (!card) return out(`No unclaimed cards in ${column.name}.`);
-    out(formatCard({ ...card, column }, ref, board.project.title));
-    out(`\nStart it with: kanban start ${card.number}`);
+    if (!card) return out(`No unclaimed cards in ${st.bold(column.name)}.`);
+    out(formatCard({ ...card, column }, ref, board.project.title, st));
+    out(`\n${st.dim("Start it with:")} ${st.cyan(`kanban start ${card.number}`)}`);
   },
 
   async add(args, rest) {
@@ -281,7 +286,7 @@ const commands: Record<string, Command> = {
       assignee: flag(args, "assignee") ?? "",
     };
     const res = await api.ops([{ type: "addCard", columnId: column.id, card }]);
-    out(`#${res.results[0]?.number} added to ${column.name}: ${title}`);
+    out(success(st, `${num(st, res.results[0]?.number ?? "?")} ${title} ${st.dim("added to")} ${columnStyle(st, column.name)}`));
   },
 
   async start(args, rest) {
@@ -298,7 +303,7 @@ const commands: Record<string, Command> = {
         { type: "moveCard", id: card.id, columnId: target.id, index: 0 },
       ])
       .catch((err) => claimError(err, card.number));
-    out(`#${card.number} ${card.title} → ${target.name} (claimed by ${who})`);
+    out(success(st, `${num(st, card.number)} ${card.title} ${st.dim("→")} ${columnStyle(st, target.name)} ${st.dim("(claimed by")} ${person(st, who)}${st.dim(")")}`));
   },
 
   async log(args, rest) {
@@ -306,7 +311,7 @@ const commands: Record<string, Command> = {
     const id = cardRef(rest[0]);
     const text = await requiredText(rest.slice(1), "the note to log");
     const res = await new Api(ref).ops([{ type: "appendToCard", id, text: logEntry(text, agentName(args)) }]);
-    out(`Logged on #${res.results[0]?.number}`);
+    out(success(st, `Logged on ${num(st, res.results[0]?.number ?? "?")}`));
   },
 
   async done(args, rest) {
@@ -320,7 +325,7 @@ const commands: Record<string, Command> = {
     if (summary.trim()) ops.push({ type: "appendToCard", id: card.id, text: logEntry(summary, agentName(args), Date.now(), "done") });
     ops.push({ type: "moveCard", id: card.id, columnId: target.id, index: 0 });
     await api.ops(ops);
-    out(`#${card.number} ${card.title} → ${target.name}`);
+    out(success(st, `${num(st, card.number)} ${card.title} ${st.dim("→")} ${columnStyle(st, target.name)}`));
   },
 
   async move(args, rest) {
@@ -332,7 +337,7 @@ const commands: Record<string, Command> = {
     if (!name) throw new CliError("Usage: kanban move <card> <column>", 2);
     const target = findColumn(board, name);
     await api.ops([{ type: "moveCard", id: card.id, columnId: target.id, index: 0 }]);
-    out(`#${card.number} ${card.title} → ${target.name}`);
+    out(success(st, `${num(st, card.number)} ${card.title} ${st.dim("→")} ${columnStyle(st, target.name)}`));
   },
 
   async update(args, rest) {
@@ -349,7 +354,7 @@ const commands: Record<string, Command> = {
       throw new CliError("Nothing to update. Use --title, --priority, --size, --assignee or --description.", 2);
     }
     const res = await new Api(ref).ops([{ type: "updateCard", id, patch }]);
-    out(`Updated #${res.results[0]?.number}`);
+    out(success(st, `Updated ${num(st, res.results[0]?.number ?? "?")}`));
   },
 
   async claim(args, rest) {
@@ -359,13 +364,13 @@ const commands: Record<string, Command> = {
     const res = await new Api(ref)
       .ops([{ type: "claimCard", id, assignee: who, force: args.flags.force === true }])
       .catch((err) => claimError(err, id));
-    out(`#${res.results[0]?.number} claimed by ${who}`);
+    out(success(st, `${num(st, res.results[0]?.number ?? "?")} claimed by ${person(st, who)}`));
   },
 
   async release(args, rest) {
     const ref = projectFor(args);
     const res = await new Api(ref).ops([{ type: "updateCard", id: cardRef(rest[0]), patch: { assignee: "" } }]);
-    out(`#${res.results[0]?.number} is unassigned`);
+    out(success(st, `${num(st, res.results[0]?.number ?? "?")} is unassigned`));
   },
 
   async delete(args, rest) {
@@ -375,7 +380,7 @@ const commands: Record<string, Command> = {
     const board = await new Api(ref).board();
     const card = findCard(board, String(id));
     await new Api(ref).ops([{ type: "deleteCard", id: card.id }]);
-    out(`Deleted #${card.number} ${card.title}`);
+    out(success(st, `Deleted ${num(st, card.number)} ${card.title}`));
   },
 
   async docs(args) {
@@ -383,8 +388,8 @@ const commands: Record<string, Command> = {
     const board = await new Api(ref).board();
     const docs = board.project.documents;
     if (args.flags.json) return json(docs.map(({ body, ...d }) => ({ ...d, length: body.length })));
-    if (!docs.length) return out('No documents. Create one with: kanban doc write "Title" notes.md');
-    out(docs.map((d) => `${d.id}  ${d.title || "Untitled"}  (${d.body.length} chars)`).join("\n"));
+    if (!docs.length) return out(`No documents. Create one with: ${st.cyan('kanban doc write "Title" notes.md')}`);
+    out(docs.map((d) => `${st.dim(d.id)}  ${d.title || "Untitled"}  ${st.dim(`(${d.body.length} chars)`)}`).join("\n"));
   },
 
   async doc(args, rest) {
@@ -396,11 +401,11 @@ const commands: Record<string, Command> = {
     const doc = findDocument(board, rest.join(" "));
     if (!doc) throw new CliError(`No document "${rest.join(" ")}". Run \`kanban docs\` to list them.`);
     if (args.flags.json) return json(doc);
-    out(doc.body || "(empty document)");
+    out(doc.body || st.dim("(empty document)"));
   },
 
   async whoami(args) {
-    out(`${agentName(args)} on ${(() => {
+    out(`${person(st, agentName(args))} on ${(() => {
       try {
         const ref = projectFor(args);
         return `${ref.origin}/p/${ref.id}`;
@@ -440,17 +445,19 @@ async function docWrite(args: Args, mode: "write" | "append", rest: string[]) {
   const res = await api.ops([op]);
   const id = res.results[0]?.id;
   const name = existing?.title ?? title;
-  out(`${existing ? (mode === "write" ? "Replaced" : "Appended to") : "Created"} "${name}"`);
-  out(pageUrl(ref, board.project.title, `/docs/${id}`));
+  out(success(st, `${existing ? (mode === "write" ? "Replaced" : "Appended to") : "Created"} ${st.bold(name)}`));
+  out(link(st, pageUrl(ref, board.project.title, `/docs/${id}`)));
 }
 
 const ALIASES: Record<string, string> = { status: "board", ls: "board", list: "board", open: "url", unclaim: "release" };
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  st = createStyle(colorEnabled(args.flags, process.stdout.isTTY, process.env));
+  errStyle = createStyle(colorEnabled(args.flags, process.stderr.isTTY, process.env));
   const [name, ...rest] = args._;
   if (args.flags.version) return out(`kanban ${VERSION}`);
-  if (!name || name === "help" || args.flags.help) return out(helpText(DEFAULT_ORIGIN));
+  if (!name || name === "help" || args.flags.help) return out(helpText(DEFAULT_ORIGIN, st));
   const command = commands[ALIASES[name] ?? name];
   if (!command) throw new CliError(`Unknown command "${name}". Run \`kanban help\`.`, 2);
   await command(args, rest);
@@ -458,6 +465,6 @@ async function main() {
 
 main().catch((err) => {
   const code = err instanceof CliError ? err.exitCode : 1;
-  process.stderr.write(`kanban: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(`${errStyle.red(errStyle.bold("kanban:"))} ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(code);
 });
