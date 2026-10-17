@@ -1,4 +1,6 @@
-import type { Card, CardFields, Doc, DocumentFields, Op, Priority, Size, ProjectDocument } from "./types";
+import type { ColumnIcon } from "./column-icons";
+import type { Card, CardFields, Column, Doc, DocumentFields, Op, Priority, Size, ProjectDocument } from "./types";
+import { isColumnIcon } from "./column-icons";
 import { normalizeDoc } from "./reducer";
 import { LIMITS, PRIORITIES, SIZES } from "./types";
 
@@ -117,6 +119,18 @@ export function sanitizeOp(raw: unknown): Op | null {
       const cid = id(raw.id);
       return cid ? { type: "deleteColumn", id: cid } : null;
     }
+    case "setColumnIcon": {
+      const cid = id(raw.id);
+      const icon = raw.icon === null || raw.icon === "auto" ? null : isColumnIcon(raw.icon) ? raw.icon : undefined;
+      if (!cid || icon === undefined) return null;
+      return { type: "setColumnIcon", id: cid, icon };
+    }
+    case "guessColumnIcon": {
+      const cid = id(raw.id);
+      const name = str(raw.name, LIMITS.name);
+      if (!cid || name === undefined || !isColumnIcon(raw.icon)) return null;
+      return { type: "guessColumnIcon", id: cid, name, icon: raw.icon };
+    }
     case "addCard": {
       const columnId = id(raw.columnId);
       if (!columnId || !isObj(raw.card)) return null;
@@ -207,6 +221,7 @@ export interface ExportedProject {
     columns: {
       id: string;
       name: string;
+      icon?: ColumnIcon;
       cards: Card[];
     }[];
     documents: ProjectDocument[];
@@ -227,6 +242,7 @@ export function exportDoc(doc: Doc): ExportedProject {
       columns: doc.columns.map((c) => ({
         id: c.id,
         name: c.name,
+        ...(c.icon ? { icon: c.icon } : {}),
         cards: c.cardIds.map((cid) => doc.cards[cid]).filter((c): c is Card => !!c),
       })),
       documents: doc.documentIds.map((id) => doc.documents[id]).filter((d): d is ProjectDocument => !!d),
@@ -287,7 +303,9 @@ export function importDoc(raw: unknown, now = Date.now()): Doc {
       };
       cardIds.push(cardId);
     }
-    doc.columns.push({ id: colId, name: str(rawCol.name, LIMITS.name) ?? "Untitled", cardIds });
+    const column: Column = { id: colId, name: str(rawCol.name, LIMITS.name) ?? "Untitled", cardIds };
+    if (isColumnIcon(rawCol.icon)) column.icon = rawCol.icon;
+    doc.columns.push(column);
   }
 
   // Documents are optional so older exports still import.

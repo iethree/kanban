@@ -3,11 +3,12 @@ import { DndContext, DragOverlay, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AlignLeft, ChevronRight, Plus } from "lucide-react";
+import { columnIcon } from "../../shared/column-icons";
 import type { Card, Column, Doc, Op } from "../../shared/types";
 import { newId } from "../../shared/validate";
 import { DROP_ANIMATION, useCardDnd } from "../lib/useCardDnd";
 import { Composer } from "./Column";
-import { PRIORITY_LABEL, PriorityIcon, timeAgo } from "./ui";
+import { PRIORITY_LABEL, PriorityIcon, StatusIcon, timeAgo } from "./ui";
 
 /** Every card as a row, grouped into collapsible sections by status (column). */
 export function ListView({
@@ -91,6 +92,7 @@ const ListSection = memo(function ListSection({
           onClick={() => onToggle(column.id)}
         >
           <ChevronRight size={15} className="list-chevron" aria-hidden />
+          <StatusIcon icon={columnIcon(column)} />
           <span className="list-section-name">{column.name || "Untitled"}</span>
           <span className="column-count">{visible.length}</span>
         </button>

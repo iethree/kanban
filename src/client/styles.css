@@ -47,6 +47,13 @@
   --pri-high: #e0533d;
   --pri-medium: #d99a1e;
   --pri-low: #7d8796;
+  /* Column status colours, after escherize/lll, darkened a little for light backgrounds. */
+  --st-backlog: #858b95;
+  --st-todo: #858b95;
+  --st-in-progress: #cf9a1f;
+  --st-in-review: #7b69dd;
+  --st-done: #3aa56f;
+  --st-cancelled: #858b95;
   --shadow-card: 0 1px 1px rgba(20, 20, 15, 0.04);
   --shadow-lift: 0 12px 28px -8px rgba(20, 20, 15, 0.22), 0 2px 6px rgba(20, 20, 15, 0.08);
   --shadow-pop: 0 10px 30px -6px rgba(20, 20, 15, 0.18), 0 0 0 1px var(--border);
@@ -83,6 +90,12 @@
     --pri-high: #f0705a;
     --pri-medium: #e8ad3c;
     --pri-low: #8b95a3;
+  --st-backlog: #828994;
+  --st-todo: #9299a2;
+  --st-in-progress: #e0b13e;
+  --st-in-review: #8d7ce6;
+  --st-done: #4cb782;
+  --st-cancelled: #828994;
     --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.25);
     --shadow-lift: 0 14px 32px -8px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35);
     --shadow-pop: 0 12px 32px -6px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--border-strong);
@@ -115,6 +128,12 @@
   --pri-high: #f0705a;
   --pri-medium: #e8ad3c;
   --pri-low: #8b95a3;
+  --st-backlog: #828994;
+  --st-todo: #9299a2;
+  --st-in-progress: #e0b13e;
+  --st-in-review: #8d7ce6;
+  --st-done: #4cb782;
+  --st-cancelled: #828994;
   --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.25);
   --shadow-lift: 0 14px 32px -8px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35);
   --shadow-pop: 0 12px 32px -6px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--border-strong);
@@ -285,6 +304,49 @@ kbd {
   opacity: 0.35;
 }
 
+/* ----------------------------------------------------------- status icons */
+
+.status-icon {
+  flex: none;
+}
+
+.status-icon.st-backlog {
+  color: var(--st-backlog);
+}
+
+.status-icon.st-todo {
+  color: var(--st-todo);
+}
+
+.status-icon.st-in-progress {
+  color: var(--st-in-progress);
+}
+
+.status-icon.st-in-review {
+  color: var(--st-in-review);
+}
+
+.status-icon.st-done {
+  color: var(--st-done);
+}
+
+.status-icon.st-cancelled {
+  color: var(--st-cancelled);
+}
+
+/* The check and cross are cut out of the filled disc in whatever is behind it. */
+.status-icon .st-cut {
+  stroke: var(--icon-cut, var(--bg));
+}
+
+.column {
+  --icon-cut: var(--column);
+}
+
+.menu-popover {
+  --icon-cut: var(--surface);
+}
+
 /* -------------------------------------------------------------------- menu */
 
 .menu {
@@ -340,6 +402,10 @@ kbd {
 .menu-item.danger,
 .menu-item.danger svg {
   color: var(--danger);
+}
+
+.menu-check {
+  margin-left: auto;
 }
 
 .menu-sep {
@@ -754,6 +820,12 @@ a.brand:hover {
   gap: 6px;
   padding: 8px 6px 4px 12px;
   min-height: 42px;
+}
+
+.column-icon-btn.icon-btn {
+  width: 24px;
+  height: 24px;
+  margin-left: -6px;
 }
 
 .column-name {

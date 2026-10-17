@@ -1,3 +1,5 @@
+import type { ColumnIcon } from "./column-icons";
+
 export const PRIORITIES = ["none", "low", "medium", "high"] as const;
 export const SIZES = ["none", "xs", "s", "m", "l", "xl"] as const;
 
@@ -22,6 +24,10 @@ export interface Column {
   id: string;
   name: string;
   cardIds: string[];
+  /** Picked by someone; when absent the icon is worked out from the name (see column-icons.ts). */
+  icon?: ColumnIcon;
+  /** The server's model guess for names no rule matches, valid only while the name is unchanged. */
+  guess?: { name: string; icon: ColumnIcon };
 }
 
 /** A free-form markdown page attached to a project. */
@@ -56,6 +62,10 @@ export type Op =
   | { type: "renameColumn"; id: string; name: string }
   | { type: "moveColumn"; id: string; index: number }
   | { type: "deleteColumn"; id: string }
+  /** null goes back to the automatic icon. */
+  | { type: "setColumnIcon"; id: string; icon: ColumnIcon | null }
+  /** Sent by the server once the model has guessed; ignored if the column was renamed meanwhile. */
+  | { type: "guessColumnIcon"; id: string; name: string; icon: ColumnIcon }
   | { type: "addCard"; columnId: string; index?: number; card: { id: string } & CardFields }
   | { type: "updateCard"; id: string; patch: Partial<CardFields> }
   | { type: "moveCard"; id: string; columnId: string; index: number }

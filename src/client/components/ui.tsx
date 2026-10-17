@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Check, Monitor, Moon, Sun } from "lucide-react";
+import type { ColumnIcon } from "../../shared/column-icons";
 import type { Priority } from "../../shared/types";
 import { useTheme, type ThemePref } from "../lib/theme";
 
@@ -12,11 +13,13 @@ export function Menu({
   trigger,
   children,
   align = "end",
+  triggerClassName = "",
 }: {
   label: string;
   trigger: ReactNode;
   children: ReactNode;
   align?: "start" | "end";
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -39,7 +42,7 @@ export function Menu({
     <div className="menu" ref={ref}>
       <button
         type="button"
-        className="icon-btn"
+        className={`icon-btn ${triggerClassName}`.trim()}
         aria-label={label}
         title={label}
         aria-expanded={open}
@@ -62,18 +65,22 @@ export function MenuItem({
   onSelect,
   danger,
   disabled,
+  checked,
 }: {
   icon?: ReactNode;
   children: ReactNode;
   onSelect: () => void;
   danger?: boolean;
   disabled?: boolean;
+  /** Makes this one of a set of radio items; true marks the current choice. */
+  checked?: boolean;
 }) {
   const close = useContext(MenuContext);
   return (
     <button
       type="button"
-      role="menuitem"
+      role={checked === undefined ? "menuitem" : "menuitemradio"}
+      aria-checked={checked}
       className={`menu-item${danger ? " danger" : ""}`}
       disabled={disabled}
       onClick={() => {
@@ -83,6 +90,7 @@ export function MenuItem({
     >
       {icon}
       <span>{children}</span>
+      {checked && <Check size={14} className="menu-check" aria-hidden />}
     </button>
   );
 }
@@ -249,6 +257,43 @@ export function PriorityIcon({ priority }: { priority: Priority }) {
           className={i < level ? "on" : "off"}
         />
       ))}
+    </svg>
+  );
+}
+
+/** Workflow status glyphs from escherize/lll, drawn on a 14px grid. */
+export function StatusIcon({ icon, size = 14 }: { icon: ColumnIcon; size?: number }) {
+  const ring = <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" />;
+  return (
+    <svg className={`status-icon st-${icon}`} width={size} height={size} viewBox="0 0 14 14" aria-hidden>
+      {icon === "backlog" && (
+        <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2.2 2.4" strokeLinecap="round" />
+      )}
+      {icon === "todo" && ring}
+      {icon === "in-progress" && (
+        <>
+          {ring}
+          <path d="M7 3.8 A3.2 3.2 0 0 1 10.2 7 L7 7 Z" fill="currentColor" />
+        </>
+      )}
+      {icon === "in-review" && (
+        <>
+          {ring}
+          <path d="M7 3.8 A3.2 3.2 0 1 1 3.8 7 L7 7 Z" fill="currentColor" />
+        </>
+      )}
+      {icon === "done" && (
+        <>
+          <circle cx="7" cy="7" r="6.2" fill="currentColor" />
+          <path d="M4.6 7.2 L6.3 8.9 L9.6 5.4" fill="none" className="st-cut" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      )}
+      {icon === "cancelled" && (
+        <>
+          <circle cx="7" cy="7" r="6.2" fill="currentColor" />
+          <path d="M4.9 4.9 L9.1 9.1 M9.1 4.9 L4.9 9.1" className="st-cut" strokeWidth="1.5" strokeLinecap="round" />
+        </>
+      )}
     </svg>
   );
 }

@@ -1,8 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
+import { needsGuess } from "../shared/column-icons";
 import { applyOp, claimConflict, emptyDoc, normalizeDoc } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
 import { exportDoc, importDoc, newId, sanitizeOp } from "../shared/validate";
 import { projectPath } from "../shared/urls";
+import { guessColumnIcons } from "./icon-guess";
 import { documentMarkdown, projectLlmsTxt } from "./llms";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
@@ -22,6 +24,8 @@ export class ProjectRoom extends DurableObject<Env> {
   private sql: SqlStorage;
   private doc: Doc | null = null;
   private version = 0;
+  /** `columnId:name` pairs with a guess in flight, so repeated triggers don't ask twice. */
+  private guessing = new Set<string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -51,6 +55,7 @@ export class ProjectRoom extends DurableObject<Env> {
     const doc = normalizeDoc(stored);
     if (doc !== stored) this.persist(emptyDoc(), doc);
     this.doc = doc;
+    this.guessIcons();
     return doc;
   }
 
@@ -89,7 +94,37 @@ export class ProjectRoom extends DurableObject<Env> {
     if (next === prev) return false;
     this.save(prev, next);
     this.broadcast({ t: "op", opId, op, at, version: this.version });
+    if (op.type === "init" || op.type === "addColumn" || op.type === "renameColumn" || op.type === "setColumnIcon") {
+      this.guessIcons();
+    }
     return true;
+  }
+
+  /**
+   * Asks the model for an icon for each column whose name no rule recognises,
+   * then records the answers as ops so every browser picks them up. Runs in the
+   * background; a failure just leaves the fallback icon until the next try.
+   */
+  private guessIcons() {
+    const key = this.env.JEV_API_KEY;
+    const doc = this.doc;
+    if (!key || !doc?.initialized) return;
+    const targets = doc.columns.filter((c) => needsGuess(c) && !this.guessing.has(`${c.id}:${c.name}`));
+    if (!targets.length) return;
+    const tags = targets.map((c) => `${c.id}:${c.name}`);
+    for (const tag of tags) this.guessing.add(tag);
+    const work = guessColumnIcons(key, doc, targets)
+      .then((guesses) => {
+        for (const column of targets) {
+          const icon = guesses.get(column.id);
+          if (icon) this.commit({ type: "guessColumnIcon", id: column.id, name: column.name, icon }, `guess-${newId()}`);
+        }
+      })
+      .catch((err) => console.error("Column icon guess failed:", err))
+      .finally(() => {
+        for (const tag of tags) this.guessing.delete(tag);
+      });
+    this.ctx.waitUntil(work);
   }
 
   // -- networking -----------------------------------------------------------
@@ -164,6 +199,7 @@ export class ProjectRoom extends DurableObject<Env> {
         if (prev.initialized) next.createdAt = prev.createdAt;
         this.save(prev, next);
         this.broadcast({ t: "reset", doc: next, version: this.version });
+        this.guessIcons();
         return Response.json({ ok: true });
       }
     }

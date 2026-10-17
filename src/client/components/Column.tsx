@@ -2,10 +2,11 @@ import { memo, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ArrowLeft, ArrowRight, Ellipsis, Plus, Trash2 } from "lucide-react";
+import { COLUMN_ICONS, COLUMN_ICON_LABEL, columnIcon } from "../../shared/column-icons";
 import { LIMITS, type Card, type Column, type Op } from "../../shared/types";
 import { newId } from "../../shared/validate";
 import { SortableCard } from "./Card";
-import { EditableText, Menu, MenuItem, MenuSeparator, useAutosize } from "./ui";
+import { EditableText, Menu, MenuItem, MenuSeparator, StatusIcon, useAutosize } from "./ui";
 
 interface Props {
   column: Column;
@@ -33,6 +34,7 @@ export const BoardColumn = memo(function BoardColumn({
   return (
     <section ref={setNodeRef} className={`column${isOver ? " is-over" : ""}`} aria-label={column.name}>
       <header className="column-header">
+        <ColumnIconMenu column={column} dispatch={dispatch} />
         <EditableText
           value={column.name}
           placeholder="Untitled"
@@ -112,6 +114,35 @@ export const BoardColumn = memo(function BoardColumn({
     </section>
   );
 });
+
+/** The column's status icon, which opens a picker; "Automatic" hands it back to the name rules and the model. */
+export function ColumnIconMenu({ column, dispatch }: { column: Column; dispatch: (op: Op) => void }) {
+  const current = columnIcon(column);
+  const auto = !column.icon;
+  return (
+    <Menu
+      label={`Icon for ${column.name || "column"}: ${COLUMN_ICON_LABEL[current]}${auto ? " (automatic)" : ""}`}
+      trigger={<StatusIcon icon={current} />}
+      align="start"
+      triggerClassName="column-icon-btn"
+    >
+      <MenuItem checked={auto} icon={<StatusIcon icon={columnIcon({ ...column, icon: undefined })} />} onSelect={() => dispatch({ type: "setColumnIcon", id: column.id, icon: null })}>
+        Automatic
+      </MenuItem>
+      <MenuSeparator />
+      {COLUMN_ICONS.map((icon) => (
+        <MenuItem
+          key={icon}
+          checked={!auto && column.icon === icon}
+          icon={<StatusIcon icon={icon} />}
+          onSelect={() => dispatch({ type: "setColumnIcon", id: column.id, icon })}
+        >
+          {COLUMN_ICON_LABEL[icon]}
+        </MenuItem>
+      ))}
+    </Menu>
+  );
+}
 
 export function Composer({ onAdd, onClose }: { onAdd: (title: string) => void; onClose: () => void }) {
   const [value, setValue] = useState("");

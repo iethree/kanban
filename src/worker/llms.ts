@@ -89,9 +89,11 @@ Fields marked optional may be left out.
 {"type": "renameColumn", "id": "COLUMN_ID", "name": "QA"}
 {"type": "moveColumn", "id": "COLUMN_ID", "index": 0}
 {"type": "deleteColumn", "id": "COLUMN_ID"}
+{"type": "setColumnIcon", "id": "COLUMN_ID", "icon": "in-review"}
 \`\`\`
 
-\`deleteColumn\` also deletes every card in that column.
+\`deleteColumn\` also deletes every card in that column. \`setColumnIcon\` picks the column's status icon:
+\`backlog | todo | in-progress | in-review | done | cancelled\`, or \`null\` to let the app choose from the name.
 
 **Documents** — a flat list of Markdown pages for plans, specs, notes and decisions.
 
@@ -161,7 +163,7 @@ ${cliSection(origin)}
 ## Concepts
 
 - **Project**: title, description, ordered columns, cards, documents.
-- **Column**: \`id\`, \`name\`. A card's status is simply the column it's in.
+- **Column**: \`id\`, \`name\`, optional \`icon\` (a status icon someone picked). A card's status is simply the column it's in.
 - **Card**: \`id\`, \`title\`, \`description\` (Markdown), \`priority\` (\`none | low | medium | high\`),
   \`size\` (\`none | xs | s | m | l | xl\`, \`none\` = not estimated yet), \`createdAt\`, \`updatedAt\` (ms since epoch).
 - **Document**: \`id\`, \`title\`, \`body\` (Markdown).

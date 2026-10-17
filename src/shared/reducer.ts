@@ -129,6 +129,21 @@ export function applyOp(doc: Doc, op: Op, now: number): Doc {
       return touch({ columns: doc.columns.map((c) => (c.id === op.id ? { ...c, name: op.name } : c)) });
     }
 
+    case "setColumnIcon": {
+      const col = doc.columns.find((c) => c.id === op.id);
+      if (!col || (col.icon ?? null) === op.icon) return doc;
+      const { icon: _, ...rest } = col;
+      const next = op.icon ? { ...rest, icon: op.icon } : rest;
+      return touch({ columns: doc.columns.map((c) => (c === col ? next : c)) });
+    }
+
+    case "guessColumnIcon": {
+      const col = doc.columns.find((c) => c.id === op.id);
+      if (!col || col.name !== op.name || (col.guess?.name === op.name && col.guess.icon === op.icon)) return doc;
+      const guess = { name: op.name, icon: op.icon };
+      return { ...doc, columns: doc.columns.map((c) => (c === col ? { ...c, guess } : c)) };
+    }
+
     case "moveColumn": {
       const col = doc.columns.find((c) => c.id === op.id);
       if (!col) return doc;
