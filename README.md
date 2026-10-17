@@ -100,8 +100,10 @@ Exit codes: `0` ok, `1` error, `2` bad usage, `3` card already claimed by someon
 
 ### Pointing an agent at a board
 
-Add something like this to a repository's `AGENTS.md` or `CLAUDE.md` (the project menu's **Copy agent
-instructions** produces a version with the real link):
+Add something like this to a repository's `AGENTS.md` or `CLAUDE.md`. It deliberately leaves out the
+project link and points at `.kanban` instead: the link is the key to edit the board, so it must not end up
+in a public repository. The project menu's **Copy agent instructions** produces a version with the real
+link, for pasting into an agent's prompt.
 
 ```md
 Plan and track your work on the kanban board linked in `.kanban`.

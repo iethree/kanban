@@ -127,8 +127,9 @@ export function Home() {
           <Bot size={14} aria-hidden />
           <span>
             Working with an AI agent? In a project, choose <Ellipsis size={13} aria-label="the options menu" className="inline-icon" />{" "}
-            → <strong>Copy agent instructions</strong> and paste them into its prompt or <code>AGENTS.md</code>. It can then plan
-            and track its work with the <code>kanban</code> CLI or the <a href="/llms.txt">HTTP API</a>.
+            → <strong>Copy agent instructions</strong> and paste them into its prompt. It can then plan and track its work with the{" "}
+            <code>kanban</code> CLI or the <a href="/llms.txt">HTTP API</a>. The instructions contain the project link, which
+            is the key to edit it, so keep them out of public repos.
           </span>
         </p>
       </main>

@@ -74,7 +74,7 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
         "",
         `Otherwise, fetch ${location.origin}/api/p/${toShortId(projectId)}/llms.txt: it describes the board and the HTTP API.`,
       ].join("\n"),
-      "Agent instructions copied. Paste them into your agent's prompt or AGENTS.md.",
+      "Agent instructions copied. They include the project link, which lets anyone edit it: don't commit them to a public repo.",
     );
 
   const importFile = async () => {
