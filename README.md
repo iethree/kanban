@@ -76,6 +76,7 @@ and a unique prefix is enough. Any text argument can be `-` to read from stdin.
 | `kanban update <card> [--title T] [--priority P] [--size S] [--assignee NAME] [--description TEXT\|-]` | Change fields (`--description` replaces the whole text) |
 | `kanban claim <card> [--force]` / `kanban release <card>` | Set or clear the assignee without moving the card |
 | `kanban delete <card> --yes` | Delete a card |
+| `kanban activity [--limit N]` | Recent changes, oldest first: moves, claims, edits and notes (default 20) |
 | `kanban docs` | List documents |
 | `kanban doc <title\|id>` | Print a document's Markdown |
 | `kanban doc write <title> [file\|-]` | Create or replace a document |

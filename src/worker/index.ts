@@ -6,7 +6,7 @@ import { agentLinks, prefersMarkdown, rewriteHomePage, rewriteProjectPage } from
 
 export { ProjectRoom } from "./project-room";
 
-const ROUTE = /^\/api\/p\/([^/]+)(?:\/(ws|export|import|ops|llms\.txt|documents\/[A-Za-z0-9_-]{1,64}))?\/?$/;
+const ROUTE = /^\/api\/p\/([^/]+)(?:\/(ws|export|import|ops|activity|llms\.txt|documents\/[A-Za-z0-9_-]{1,64}))?\/?$/;
 const POST_ONLY = new Set(["import", "ops"]);
 
 export default {
@@ -42,7 +42,7 @@ export default {
       }
       const stub = env.PROJECTS.get(env.PROJECTS.idFromName(id));
       // Normalise the path so the Durable Object always sees /api/p/<uuid>/<action>.
-      return stub.fetch(new Request(new URL(`/api/p/${id}/${action}`, url.origin), request));
+      return stub.fetch(new Request(new URL(`/api/p/${id}/${action}${url.search}`, url.origin), request));
     }
 
     if (url.pathname.startsWith("/api/")) {

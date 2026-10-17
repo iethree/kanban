@@ -1,3 +1,4 @@
+import type { ActivityEntry } from "./activity";
 import type { ColumnIcon } from "./column-icons";
 
 export const PRIORITIES = ["none", "low", "medium", "high"] as const;
@@ -90,7 +91,9 @@ export type ServerMessage =
   | { t: "reset"; doc: Doc; version: number }
   | { t: "op"; opId: string; op: Op; at: number; version: number }
   | { t: "ack"; opId: string }
-  | { t: "presence"; peers: number };
+  | { t: "presence"; peers: number }
+  /** New or updated feed entries; an entry whose seq the client already has replaces it. */
+  | { t: "activity"; entries: ActivityEntry[] };
 
 export const DEFAULT_COLUMNS = ["Backlog", "In progress", "Done"];
 

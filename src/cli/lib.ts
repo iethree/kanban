@@ -2,6 +2,7 @@
  * Pure helpers for the kanban CLI: argument parsing, project/card/column
  * resolution and output formatting. Kept free of I/O so it can be unit tested.
  */
+import type { ActivityEntry } from "../shared/activity";
 import { toProjectUuid, toShortId } from "../shared/ids";
 import { PRIORITIES, SIZES, type Card, type Priority, type Size } from "../shared/types";
 import { parseProjectPath, projectPath } from "../shared/urls";
@@ -218,6 +219,46 @@ export function formatCard(card: BoardCard, ref: ProjectRef, projectTitle: strin
   ].join("\n");
 }
 
+/** One feed entry as a line: "2026-10-15 14:03 UTC  #12 Fix login: Backlog → In progress". */
+export function formatActivity(e: ActivityEntry, s: Style = plain): string {
+  const card = (c: { number: number; title: string }) => `${num(s, c.number)} ${c.title || "Untitled"}`;
+  const what = (() => {
+    switch (e.kind) {
+      case "project.created":
+        return `project created: ${e.title}`;
+      case "project.renamed":
+        return `project renamed: ${e.from} → ${e.to}`;
+      case "project.imported":
+        return `project replaced by an import of ${e.title}`;
+      case "column.added":
+        return `column added: ${columnName(s, e.column.name)}`;
+      case "column.renamed":
+        return `column renamed: ${columnName(s, e.from)} → ${columnName(s, e.column.name)}`;
+      case "column.deleted":
+        return `column deleted: ${columnName(s, e.column.name)} (${e.cards} card${e.cards === 1 ? "" : "s"})`;
+      case "card.created":
+        return `${card(e.card)}: created in ${columnName(s, e.to.name)}`;
+      case "card.moved":
+        return `${card(e.card)}: ${columnName(s, e.from.name)} → ${columnName(s, e.to.name)}`;
+      case "card.edited": {
+        const fields = Object.keys(e.changes);
+        return `${card(e.card)}: edited${fields.length ? ` ${fields.join(", ")}` : ""}`;
+      }
+      case "card.claimed":
+        return `${card(e.card)}: claimed by ${person(s, e.assignee)}`;
+      case "card.noted":
+        return `${card(e.card)}: note — ${e.text.replace(/\s+/g, " ")}`;
+      case "card.deleted":
+        return `${card(e.card)}: deleted`;
+      case "document.created":
+      case "document.edited":
+      case "document.deleted":
+        return `document ${e.kind.split(".")[1]}: ${e.document.title || "Untitled"}`;
+    }
+  })();
+  return `${s.dim(timestamp(e.at))}  ${what}`;
+}
+
 /** A progress note appended to a card: "**2026-10-15 14:03 UTC · claude:** text". */
 export function logEntry(text: string, who: string, now = Date.now(), label = ""): string {
   const body = text.trim();
@@ -274,6 +315,7 @@ function helpBody(origin: string): string {
       ["kanban board", "Columns and cards: #number title [priority, size] @assignee"],
       ["kanban show <card>", "One card, including its description"],
       ["kanban next [--column C]", "Highest-priority unclaimed card in the first column (or C)"],
+      ["kanban activity [--limit N]", "What changed lately: moves, claims, edits, notes (default 20)"],
       ["kanban docs", "List documents"],
       ["kanban doc <title|id>", "Print a document's Markdown"],
     ]),

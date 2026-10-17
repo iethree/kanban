@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { describeOp, mergeActivity, type ActivityEntry, type ActivityEvent } from "../shared/activity";
 import { randomProjectColor } from "../shared/colors";
 import { needsGuess } from "../shared/column-icons";
 import { applyOp, claimConflict, emptyDoc, normalizeDoc } from "../shared/reducer";
@@ -10,6 +11,8 @@ import { documentMarkdown, projectLlmsTxt } from "./llms";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const MAX_HTTP_OPS = 100;
+/** Activity rows kept per project; older ones are pruned. */
+const MAX_ACTIVITY = 10_000;
 
 type Row = { id: string; data: string };
 type Obj = Record<string, unknown>;
@@ -34,6 +37,9 @@ export class ProjectRoom extends DurableObject<Env> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS activity (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, data TEXT NOT NULL)`,
+    );
     // Keepalive pings from clients are answered without waking the object.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
@@ -87,6 +93,47 @@ export class ProjectRoom extends DurableObject<Env> {
     });
   }
 
+  // -- activity -------------------------------------------------------------
+
+  /** Writes feed entries (merging bursts of edits into the latest row) and pushes them to browsers. */
+  private record(events: ActivityEvent[], at: number) {
+    if (!events.length) return;
+    const written: ActivityEntry[] = [];
+    for (const event of events) {
+      const last = this.latestActivity();
+      const merged = last && mergeActivity(last, event, at);
+      if (merged) {
+        const { seq, ...data } = merged;
+        this.sql.exec(`UPDATE activity SET at = ?, data = ? WHERE seq = ?`, at, JSON.stringify(data), seq);
+        written.push(merged);
+        continue;
+      }
+      const data = { ...event, at };
+      const seq = this.sql
+        .exec<{ seq: number }>(`INSERT INTO activity (at, data) VALUES (?, ?) RETURNING seq`, at, JSON.stringify(data))
+        .one().seq;
+      if (seq % 500 === 0) this.sql.exec(`DELETE FROM activity WHERE seq <= ?`, seq - MAX_ACTIVITY);
+      written.push({ ...data, seq } as ActivityEntry);
+    }
+    this.broadcast({ t: "activity", entries: written });
+  }
+
+  private latestActivity(): ActivityEntry | null {
+    const row = this.sql.exec<{ seq: number; data: string }>(`SELECT seq, data FROM activity ORDER BY seq DESC LIMIT 1`).toArray()[0];
+    return row ? { ...JSON.parse(row.data), seq: row.seq } : null;
+  }
+
+  /** Newest first, `limit` entries older than `before` (a seq), for the feed and stats. */
+  private activityPage(before: number, limit: number): { entries: ActivityEntry[]; more: boolean } {
+    const rows = this.sql
+      .exec<{ seq: number; data: string }>(`SELECT seq, data FROM activity WHERE seq < ? ORDER BY seq DESC LIMIT ?`, before, limit + 1)
+      .toArray();
+    return {
+      entries: rows.slice(0, limit).map((r) => ({ ...JSON.parse(r.data), seq: r.seq })),
+      more: rows.length > limit,
+    };
+  }
+
   /** Applies a validated op, persists and broadcasts it. Returns whether anything changed. */
   private commit(op: Op, opId: string): boolean {
     const at = Date.now();
@@ -95,6 +142,7 @@ export class ProjectRoom extends DurableObject<Env> {
     if (next === prev) return false;
     this.save(prev, next);
     this.broadcast({ t: "op", opId, op, at, version: this.version });
+    this.record(describeOp(prev, next, op), at);
     if (op.type === "init" || op.type === "addColumn" || op.type === "renameColumn" || op.type === "setColumnIcon") {
       this.guessIcons();
     }
@@ -187,6 +235,14 @@ export class ProjectRoom extends DurableObject<Env> {
       case "ops":
         return this.handleOps(request);
 
+      case "activity": {
+        const doc = this.load();
+        if (!doc.initialized) return notFound();
+        const before = Number(url.searchParams.get("before")) || Number.MAX_SAFE_INTEGER;
+        const limit = Math.max(1, Math.min(MAX_ACTIVITY, Math.floor(Number(url.searchParams.get("limit")) || 50)));
+        return Response.json(this.activityPage(before, limit));
+      }
+
       case "import": {
         const length = Number(request.headers.get("Content-Length") ?? 0);
         if (length > MAX_IMPORT_BYTES) return Response.json({ error: "File too large" }, { status: 413 });
@@ -200,6 +256,7 @@ export class ProjectRoom extends DurableObject<Env> {
         if (prev.initialized) next.createdAt = prev.createdAt;
         this.save(prev, next);
         this.broadcast({ t: "reset", doc: next, version: this.version });
+        this.record([{ kind: "project.imported", title: next.title }], Date.now());
         this.guessIcons();
         return Response.json({ ok: true });
       }

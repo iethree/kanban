@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ActivityEntry } from "../../shared/activity";
 import { applyOp } from "../../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../../shared/types";
 import { newId } from "../../shared/validate";
@@ -28,6 +29,7 @@ export function useProject(projectId: string) {
   const confirmed = useRef<Doc | null>(null);
   const pending = useRef<Pending[]>([]);
   const socket = useRef<WebSocket | null>(null);
+  const activityListeners = useRef(new Set<(entries: ActivityEntry[]) => void>());
 
   const recompute = useCallback(() => {
     let next = confirmed.current;
@@ -73,6 +75,9 @@ export function useProject(projectId: string) {
           break;
         case "presence":
           setPeers(msg.peers);
+          return;
+        case "activity":
+          for (const listener of activityListeners.current) listener(msg.entries);
           return;
       }
       recompute();
@@ -138,5 +143,13 @@ export function useProject(projectId: string) {
     [recompute],
   );
 
-  return { doc, status, peers, pendingCount, dispatch };
+  /** Calls `listener` with feed entries as they're recorded; returns an unsubscribe function. */
+  const subscribeActivity = useCallback((listener: (entries: ActivityEntry[]) => void) => {
+    activityListeners.current.add(listener);
+    return () => {
+      activityListeners.current.delete(listener);
+    };
+  }, []);
+
+  return { doc, status, peers, pendingCount, dispatch, subscribeActivity };
 }

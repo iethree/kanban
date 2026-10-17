@@ -9,6 +9,7 @@ import { rememberProject } from "../lib/recent";
 import { navigate, useSearchParam } from "../lib/router";
 import { useProject, type ConnectionStatus } from "../lib/sync";
 import { BoardSkeleton, BoardView } from "./BoardView";
+import { ActivityView } from "./ActivityView";
 import { CardModal } from "./CardModal";
 import { DocumentsView } from "./Documents";
 import { ListView } from "./ListView";
@@ -18,13 +19,13 @@ import { EditableText, Logo, Menu, MenuItem, MenuSeparator, MenuSwatches, ThemeT
 export type ProjectView = ProjectRoute["view"];
 
 export function ProjectPage({ projectId, view }: { projectId: string; view: ProjectView }) {
-  const { doc, status, peers, pendingCount, dispatch } = useProject(projectId);
+  const { doc, status, peers, pendingCount, dispatch, subscribeActivity } = useProject(projectId);
   const [openCardId, setOpenCardId] = useSearchParam("card");
   const [toast, showToast] = useToast();
   // Until the project loads we don't know its name, so links fall back to the generic slug.
   const base = projectPath(projectId, doc?.title ?? "");
   const viewSuffix =
-    view.kind === "docs" ? `/docs${view.documentId ? `/${view.documentId}` : ""}` : view.kind === "list" ? "/list" : "";
+    view.kind === "docs" ? `/docs${view.documentId ? `/${view.documentId}` : ""}` : view.kind === "board" ? "" : `/${view.kind}`;
 
   // Keep the address bar on the canonical /p/<slug>/<uuid> form, e.g. after a rename
   // or when opened via an old link. Replacing (not pushing) keeps history clean.
@@ -194,6 +195,9 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
                 Documents
                 {doc.documentIds.length > 0 && <span className="tab-count">{doc.documentIds.length}</span>}
               </TabLink>
+              <TabLink href={`${base}/activity`} active={view.kind === "activity"}>
+                Activity
+              </TabLink>
             </nav>
           </div>
 
@@ -201,6 +205,8 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
             <BoardView doc={doc} dispatch={dispatch} onOpenCard={openCard} />
           ) : view.kind === "list" ? (
             <ListView projectId={projectId} doc={doc} dispatch={dispatch} onOpenCard={openCard} />
+          ) : view.kind === "activity" ? (
+            <ActivityView projectId={projectId} doc={doc} basePath={base} subscribeActivity={subscribeActivity} onOpenCard={openCard} />
           ) : (
             <DocumentsView basePath={`${base}/docs`} doc={doc} documentId={view.documentId} dispatch={dispatch} />
           )}

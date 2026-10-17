@@ -10,6 +10,7 @@ import { userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { toShortId } from "../shared/ids";
 import { DEFAULT_COLUMNS, LIMITS } from "../shared/types";
+import type { ActivityEntry } from "../shared/activity";
 import type { ExportedProject } from "../shared/validate";
 import {
   CliError,
@@ -20,6 +21,7 @@ import {
   findDocument,
   flag,
   formatBoard,
+  formatActivity,
   formatCard,
   helpText,
   logEntry,
@@ -35,7 +37,7 @@ import {
 } from "./lib";
 import { colorEnabled, column as columnStyle, createStyle, link, num, person, plain, success, type Style } from "./style";
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const CONFIG_FILE = ".kanban";
 
 // The server replaces this placeholder with its own origin when serving the script.
@@ -172,6 +174,9 @@ class Api {
   }
 
   board = () => this.request<ExportedProject>("");
+
+  activity = (limit: number) =>
+    this.request<{ entries: ActivityEntry[]; more: boolean }>(`/activity?limit=${limit}`);
 
   ops = (ops: unknown[]) =>
     this.request<OpsResult>("/ops", {
@@ -381,6 +386,18 @@ const commands: Record<string, Command> = {
     const card = findCard(board, String(id));
     await new Api(ref).ops([{ type: "deleteCard", id: card.id }]);
     out(success(st, `Deleted ${num(st, card.number)} ${card.title}`));
+  },
+
+  async activity(args) {
+    const ref = projectFor(args);
+    const raw = flag(args, "limit") ?? "20";
+    const limit = Number(raw);
+    if (!Number.isInteger(limit) || limit < 1) throw new CliError(`--limit must be a positive whole number, not "${raw}".`, 2);
+    const { entries } = await new Api(ref).activity(limit);
+    if (args.flags.json) return json(entries);
+    if (!entries.length) return out("No activity yet.");
+    // Oldest first, like a log, so the latest change is right above the prompt.
+    out(entries.reverse().map((e) => formatActivity(e, st)).join("\n"));
   },
 
   async docs(args) {
