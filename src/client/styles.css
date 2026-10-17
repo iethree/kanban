@@ -728,7 +728,6 @@ a.brand:hover {
 .board {
   flex: 1;
   display: flex;
-  align-items: flex-start;
   gap: 12px;
   padding: 16px 24px 24px;
   overflow-x: auto;
@@ -740,7 +739,6 @@ a.brand:hover {
   flex-direction: column;
   flex: none;
   width: 292px;
-  max-height: 100%;
   border-radius: var(--radius-lg);
   background: var(--column);
   transition: box-shadow 0.15s;
@@ -856,6 +854,7 @@ input.column-name {
   align-items: center;
   gap: 6px;
   flex: none;
+  align-self: flex-start;
   width: 292px;
   height: 42px;
   padding: 0 12px;
