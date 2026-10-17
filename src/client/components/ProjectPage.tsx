@@ -14,6 +14,7 @@ import { CardModal } from "./CardModal";
 import { DocumentsView } from "./Documents";
 import { ListView } from "./ListView";
 import { SetupDialog } from "./SetupDialog";
+import { StatsView } from "./StatsView";
 import { EditableText, Logo, Menu, MenuItem, MenuSeparator, MenuSwatches, ThemeToggle } from "./ui";
 
 export type ProjectView = ProjectRoute["view"];
@@ -198,6 +199,9 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
               <TabLink href={`${base}/activity`} active={view.kind === "activity"}>
                 Activity
               </TabLink>
+              <TabLink href={`${base}/stats`} active={view.kind === "stats"}>
+                Stats
+              </TabLink>
             </nav>
           </div>
 
@@ -207,6 +211,8 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
             <ListView projectId={projectId} doc={doc} dispatch={dispatch} onOpenCard={openCard} />
           ) : view.kind === "activity" ? (
             <ActivityView projectId={projectId} doc={doc} basePath={base} subscribeActivity={subscribeActivity} onOpenCard={openCard} />
+          ) : view.kind === "stats" ? (
+            <StatsView projectId={projectId} doc={doc} subscribeActivity={subscribeActivity} />
           ) : (
             <DocumentsView basePath={`${base}/docs`} doc={doc} documentId={view.documentId} dispatch={dispatch} />
           )}
