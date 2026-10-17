@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseProjectPath } from "../src/shared/urls";
-import { agentLinks, prefersMarkdown, rewriteProjectPage } from "../src/worker/pages";
+import { agentLinks, prefersMarkdown, rewriteHomePage, rewriteProjectPage } from "../src/worker/pages";
 
 const ID = "3c5f5d83-d805-4e41-bba5-7a69e0ea588b";
 const SHORT = "1pv7XjjQP9gM4BRBqypgrb";
@@ -39,6 +39,20 @@ describe("rewriteProjectPage", () => {
     expect(headers.get("Link")).toContain(`/api/p/${SHORT}/llms.txt`);
   });
 
+  test("leads with the CLI, using this project's link", async () => {
+    const { html } = await render(`/p/my-board/${ID}`);
+    expect(html).toContain(`curl -fsSL ${ORIGIN}/install | sh`);
+    expect(html).toContain(`kanban init ${ORIGIN}/p/${SHORT}`);
+    expect(html.indexOf("kanban CLI")).toBeLessThan(html.indexOf("Over HTTP"));
+  });
+
+  test("an open card or document is pointed out with both CLI and HTTP routes", async () => {
+    const card = await render(`/p/my-board/${ID}`, "abc123def4567890");
+    expect(card.html).toContain("kanban show abc123def4567890");
+    const doc = await render(`/p/my-board/${ID}/docs/abc123`);
+    expect(doc.html).toContain("kanban doc abc123");
+  });
+
   test("document page also links the document's markdown", async () => {
     const { html } = await render(`/p/my-board/${ID}/docs/abc123`);
     expect(html).toContain(`${ORIGIN}/api/p/${SHORT}/documents/abc123`);
@@ -50,4 +64,13 @@ describe("rewriteProjectPage", () => {
     expect(html).not.toContain("onerror");
     expect(html).not.toContain("/documents/");
   });
+});
+
+test("home page hint includes this site's install command", async () => {
+  const res = rewriteHomePage(new Response(SHELL, { headers: { "Content-Type": "text/html" } }), ORIGIN);
+  const html = await res.text();
+  expect(html).toContain(`curl -fsSL ${ORIGIN}/install | sh`);
+  expect(html).toContain('kanban new "Project title"');
+  expect(html).toContain(`href="${ORIGIN}/llms.txt"`);
+  expect(html).not.toContain("generic");
 });

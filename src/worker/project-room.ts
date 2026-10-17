@@ -313,6 +313,9 @@ const CARD_OPS = new Set(["updateCard", "moveCard", "deleteCard", "claimCard", "
 const badRequest = (error: string) => Response.json({ ok: false, error }, { status: 400 });
 const notFound = () =>
   Response.json(
-    { ok: false, error: "Project not found. Create it by POSTing an init op to /ops (see /llms.txt)." },
+    {
+      ok: false,
+      error: 'Project not found. Create it with `kanban new "Title"`, or by POSTing an init op to /ops (see /llms.txt).',
+    },
     { status: 404 },
   );

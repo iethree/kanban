@@ -5,6 +5,8 @@ const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+/** For text content (not attributes), where quotes can stay readable. */
+const escapeText = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
 
 /** Where an agent can fetch the content of a given page without a browser. */
 export function agentLinks(origin: string, route: ProjectRoute, cardId: string | null) {
@@ -30,22 +32,45 @@ export function agentLinks(origin: string, route: ProjectRoute, cardId: string |
  */
 function agentHintHtml(links: ReturnType<typeof agentLinks>): string {
   const code = (s: string) => `<code>${escapeHtml(s)}</code>`;
-  const items = [
-    `Instructions, a Markdown snapshot of the board, and the edit API: <code>GET</code> ${code(links.llms)}`,
-    `The whole project (columns, cards, documents) as JSON: <code>GET</code> ${code(links.api)}`,
-    `Make changes: <code>POST</code> ${code(`${links.api}/ops`)} with <code>{"ops": [...]}</code> (see llms.txt for the op reference)`,
-    `Or, from a shell, use the CLI: ${code(`curl -fsSL ${links.origin}/install | sh`)} then ${code(`kanban init ${links.page}`)} and ${code("kanban help")}`,
-  ];
-  if (links.document) {
-    items.unshift(`This document (${code(links.documentId!)}) as raw Markdown: <code>GET</code> ${code(links.document)}`);
-  }
+
+  // What's open on this page, if anything: shown first, with both ways to read it.
+  const focus: string[] = [];
   if (links.cardId) {
-    items.unshift(`This page has card ${code(links.cardId)} open. Find it by id in the JSON from ${code(links.api)}.`);
+    focus.push(
+      `This page has card ${code(links.cardId)} open. Read it with ${code(`kanban show ${links.cardId}`)}, or find it by id in the JSON from ${code(links.api)}.`,
+    );
   }
+  if (links.document) {
+    focus.push(
+      `This page shows document ${code(links.documentId!)}. Read it with ${code(`kanban doc ${links.documentId}`)}, or as raw Markdown: <code>GET</code> ${code(links.document)}`,
+    );
+  }
+
+  const cli = [
+    `curl -fsSL ${links.origin}/install | sh     # installs the kanban CLI (Node 18+ or Bun)`,
+    `kanban init ${links.page}`,
+    "kanban board                 # columns and cards: #12 title [priority, size] @assignee",
+    "kanban next                  # highest-priority unclaimed card",
+    "kanban start 12              # claim it and move it to In progress",
+    'kanban log 12 "what changed" # append a progress note',
+    'kanban done 12 "summary"     # move it to Done',
+    "kanban help                  # everything else: add, update, documents, --json",
+  ];
+
+  const http = [
+    `Instructions, a Markdown snapshot of the board, and the op reference: <code>GET</code> ${code(links.llms)}`,
+    `The whole project (columns, cards, documents) as JSON: <code>GET</code> ${code(links.api)}`,
+    `Make changes: <code>POST</code> ${code(`${links.api}/ops`)} with <code>{"ops": [...]}</code>`,
+  ];
+
   return `<section id="agent-hint" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0">
 <h1>Kanban project</h1>
-<p>This page is a JavaScript app. If you are an AI agent or a script, you don't need a browser. Read and update this project over HTTP instead:</p>
-<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>
+<p>This page is a JavaScript app. If you are an AI agent or a script, you don't need a browser to read or update this project.</p>
+${focus.length ? `<ul>${focus.map((i) => `<li>${i}</li>`).join("")}</ul>\n` : ""}<h2>From a shell: the kanban CLI (recommended)</h2>
+<pre><code>${escapeText(cli.join("\n"))}</code></pre>
+<p>Set ${code("KANBAN_AGENT")} (or pass ${code("--as NAME")}) so your claims and notes carry your name.</p>
+<h2>Over HTTP</h2>
+<ul>${http.map((i) => `<li>${i}</li>`).join("")}</ul>
 <p>Only the id at the end of the URL identifies the project; the name before it is cosmetic. No authentication is needed.</p>
 </section>`;
 }
@@ -78,6 +103,42 @@ export function rewriteProjectPage(response: Response, links: ReturnType<typeof 
 
   const headers = new Headers(rewritten.headers);
   headers.append("Link", `<${links.llms}>; rel="alternate"; type="text/markdown"`);
+  headers.append("Vary", "Accept");
+  return new Response(rewritten.body, { status: rewritten.status, headers });
+}
+
+/** The home page's agent hint, with this deployment's address in the commands. */
+export function rewriteHomePage(response: Response, origin: string): Response {
+  const code = (t: string) => `<code>${escapeHtml(t)}</code>`;
+  const commands = [
+    `curl -fsSL ${origin}/install | sh     # installs the kanban CLI (Node 18+ or Bun)`,
+    'kanban new "Project title"            # create a project and link this directory',
+    "kanban init <project-url>             # or link an existing project",
+    "kanban help",
+  ].join("\n");
+  const hint = `<section id="agent-hint" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0">
+<h1>Kanban</h1>
+<p>Real-time shared kanban boards. If you are an AI agent or a script, you don't need a browser.</p>
+<h2>From a shell: the kanban CLI (recommended)</h2>
+<pre><code>${escapeText(commands)}</code></pre>
+<h2>Over HTTP</h2>
+<p>Read ${code(`${origin}/llms.txt`)} for the API, including how to create a project.</p>
+</section>`;
+
+  const rewritten = new HTMLRewriter()
+    .on('link[rel="alternate"]', {
+      element(el) {
+        el.setAttribute("href", `${origin}/llms.txt`);
+      },
+    })
+    .on("#root", {
+      element(el) {
+        el.setInnerContent(hint, { html: true });
+      },
+    })
+    .transform(response);
+  const headers = new Headers(rewritten.headers);
+  headers.append("Link", `<${origin}/llms.txt>; rel="alternate"; type="text/markdown"`);
   headers.append("Vary", "Accept");
   return new Response(rewritten.body, { status: rewritten.status, headers });
 }

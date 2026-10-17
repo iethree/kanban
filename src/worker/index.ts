@@ -2,7 +2,7 @@ import { parseProjectPath } from "../shared/urls";
 import { toProjectUuid } from "../shared/ids";
 import { installScript, serveCli } from "./cli";
 import { rootLlmsTxt } from "./llms";
-import { agentLinks, prefersMarkdown, rewriteProjectPage } from "./pages";
+import { agentLinks, prefersMarkdown, rewriteHomePage, rewriteProjectPage } from "./pages";
 
 export { ProjectRoom } from "./project-room";
 
@@ -16,8 +16,14 @@ export default {
     if (url.pathname === "/install") return installScript(url.origin);
     if (url.pathname === "/kanban.js") return serveCli(env.ASSETS, url.origin);
 
+    if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
+      // Agents asking for Markdown get the instructions directly; browsers get the app with a hint.
+      if (prefersMarkdown(request)) return markdown(rootLlmsTxt(url.origin));
+      return rewriteHomePage(await env.ASSETS.fetch(request), url.origin);
+    }
+
     if (url.pathname === "/llms.txt") {
-      return new Response(rootLlmsTxt(url.origin), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
+      return markdown(rootLlmsTxt(url.origin));
     }
 
     const match = url.pathname.match(ROUTE);
@@ -65,3 +71,5 @@ export default {
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
+
+const markdown = (body: string) => new Response(body, { headers: { "Content-Type": "text/markdown; charset=utf-8", Vary: "Accept" } });

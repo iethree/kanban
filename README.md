@@ -125,11 +125,12 @@ Card ops accept a card number (`12` or `"#12"`) as the `id`, and `column` names 
 `claimCard` returns 409 if someone else holds the card, and `appendToCard` / `appendToDocument` add text
 without overwriting anyone's edits. `POST /ops` returns the project `url` and each card's `number`.
 
-Project pages are a client-side app, so the Worker also makes them useful without a browser
-(`src/worker/pages.ts`): the HTML includes `<link rel="alternate">` tags and a short, visually hidden
-note with the project's API and CLI instructions (React replaces it on load), and requesting a page
-with `Accept: text/markdown` returns the project's `llms.txt`, or the document's Markdown on a
-document page.
+The app is client-side, so the Worker also makes its pages useful without a browser
+(`src/worker/pages.ts`). The home page and project pages include `<link rel="alternate">` tags and a
+short, visually hidden note (React replaces it on load) that leads with the CLI install and commands
+for that page, including `kanban show` / `kanban doc` when a card or document is open, then the HTTP
+endpoints. Requesting any of them with `Accept: text/markdown` returns the relevant `llms.txt`, or the
+document's Markdown on a document page.
 
 ## Develop
 
