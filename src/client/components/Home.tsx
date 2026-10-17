@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Plus, Search, Upload, X } from "lucide-react";
+import { ArrowRight, Bot, Ellipsis, Plus, Search, Upload, X } from "lucide-react";
 import { toShortId } from "../../shared/ids";
 import { projectPath } from "../../shared/urls";
 import { navigate } from "../lib/router";
@@ -120,6 +120,15 @@ export function Home() {
             </ul>
           )}
         </section>
+
+        <p className="home-note">
+          <Bot size={14} aria-hidden />
+          <span>
+            Working with an AI agent? In a project, choose <Ellipsis size={13} aria-label="the options menu" className="inline-icon" />{" "}
+            → <strong>Copy agent instructions</strong> and paste them into its prompt or <code>AGENTS.md</code>. It can then plan
+            and track its work with the <code>kanban</code> CLI or the <a href="/llms.txt">HTTP API</a>.
+          </span>
+        </p>
       </main>
     </div>
   );

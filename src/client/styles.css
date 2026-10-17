@@ -707,6 +707,46 @@ a.brand:hover {
   opacity: 0;
 }
 
+.home-note {
+  display: flex;
+  gap: 8px;
+  margin: 48px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.home-note > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.home-note strong {
+  font-weight: 550;
+  color: var(--text-2);
+}
+
+.home-note code {
+  font-family: var(--mono);
+  font-size: 0.95em;
+}
+
+.home-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+
+.home-note a:hover {
+  color: var(--text-2);
+}
+
+.home-note .inline-icon {
+  vertical-align: -2px;
+}
+
 @media (max-width: 560px) {
   .home-main {
     padding-top: 44px;
