@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import { LIMITS, PRIORITIES, SIZES, type Card, type CardFields, type Column, type Op } from "../../shared/types";
+import { useReadOnly } from "../lib/readonly";
 import { useRemoteDraft } from "../lib/useRemoteDraft";
 import { AssigneeInput } from "./AssigneeInput";
 import { MarkdownField } from "./Markdown";
@@ -22,6 +23,7 @@ export function CardModal({
   dispatch: (op: Op) => void;
   onClose: () => void;
 }) {
+  const readOnly = useReadOnly();
   const update = (patch: Partial<CardFields>) => dispatch({ type: "updateCard", id: card.id, patch });
   const title = useRemoteDraft(card.title, (title) => update({ title }));
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -50,7 +52,8 @@ export function CardModal({
               placeholder="Card title"
               aria-label="Card title"
               maxLength={LIMITS.title}
-              autoFocus={!card.title}
+              readOnly={readOnly}
+              autoFocus={!card.title && !readOnly}
               {...title}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -76,6 +79,7 @@ export function CardModal({
                 className="select"
                 value={column.id}
                 aria-label="Status"
+                disabled={readOnly}
                 onChange={(e) => dispatch({ type: "moveCard", id: card.id, columnId: e.target.value, index: 0 })}
               >
                 {columns.map((c) => (
@@ -98,6 +102,7 @@ export function CardModal({
                     aria-label={PRIORITY_LABEL[p]}
                     data-tooltip={PRIORITY_LABEL[p]}
                     className={card.priority === p ? "is-active" : ""}
+                    disabled={readOnly}
                     onClick={() => update({ priority: p })}
                   >
                     <PriorityIcon priority={p} />
@@ -110,12 +115,18 @@ export function CardModal({
               <label className="side-label" htmlFor="card-assignee">
                 Assignee
               </label>
-              <AssigneeInput
-                id="card-assignee"
-                value={card.assignee}
-                cards={cards}
-                onCommit={(assignee) => update({ assignee })}
-              />
+              {readOnly ? (
+                <span id="card-assignee" className="side-value">
+                  {card.assignee || "Nobody"}
+                </span>
+              ) : (
+                <AssigneeInput
+                  id="card-assignee"
+                  value={card.assignee}
+                  cards={cards}
+                  onCommit={(assignee) => update({ assignee })}
+                />
+              )}
             </div>
 
             <div className="side-field">
@@ -130,6 +141,7 @@ export function CardModal({
                     aria-label={s === "none" ? "No size" : s.toUpperCase()}
                     data-tooltip={s === "none" ? "No size" : undefined}
                     className={`mono${card.size === s ? " is-active" : ""}`}
+                    disabled={readOnly}
                     onClick={() => update({ size: s })}
                   >
                     {s === "none" ? "–" : s.toUpperCase()}
@@ -145,18 +157,20 @@ export function CardModal({
                 </span>
                 {card.updatedAt - card.createdAt > 1000 && <span>Updated {timeAgo(card.updatedAt)}</span>}
               </div>
-              <button
-                type="button"
-                className={`btn btn-sm side-delete ${confirmDelete ? "btn-danger" : "btn-ghost"}`}
-                onClick={() => {
-                  if (!confirmDelete) return setConfirmDelete(true);
-                  dispatch({ type: "deleteCard", id: card.id });
-                  onClose();
-                }}
-              >
-                <Trash2 size={14} />
-                {confirmDelete ? "Click to confirm" : "Delete card"}
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className={`btn btn-sm side-delete ${confirmDelete ? "btn-danger" : "btn-ghost"}`}
+                  onClick={() => {
+                    if (!confirmDelete) return setConfirmDelete(true);
+                    dispatch({ type: "deleteCard", id: card.id });
+                    onClose();
+                  }}
+                >
+                  <Trash2 size={14} />
+                  {confirmDelete ? "Click to confirm" : "Delete card"}
+                </button>
+              )}
             </div>
           </aside>
         </div>

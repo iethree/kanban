@@ -4,7 +4,7 @@ import { randomProjectColor } from "../shared/colors";
 import { needsGuess } from "../shared/column-icons";
 import { applyOp, claimConflict, emptyDoc, normalizeDoc, resolveCardRef } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
-import { KEY_CLOSE_CODE, KEY_HEADER, KEY_RE, generateKey, hashKey, keyHint, type KeyInfo } from "../shared/keys";
+import { KEY_CLOSE_CODE, KEY_HEADER, KEY_RE, PUBLIC_ACCESS, generateKey, hashKey, keyHint, type KeyInfo, type PublicAccess } from "../shared/keys";
 import { exportDoc, importDoc, newId, sanitizeOp } from "../shared/validate";
 import { projectPath } from "../shared/urls";
 import { guessColumnIcons } from "./icon-guess";
@@ -205,10 +205,31 @@ export class ProjectRoom extends DurableObject<Env> {
   /** Keys are never accepted in URLs, where they'd be shared along with the link. */
   private async checkKey(given: string | null): Promise<KeyCheck> {
     if (!this.hasKeys()) return { keyId: null };
-    if (!given) return { denied: "required" };
+    if (!given) return this.publicAccess() === "read" ? { keyId: null, readOnly: true } : { denied: "required" };
     if (!KEY_RE.test(given)) return { denied: "invalid" };
     const row = this.sql.exec<{ id: string }>(`SELECT id FROM keys WHERE hash = ?`, await hashKey(given)).toArray()[0];
     return row ? { keyId: row.id } : { denied: "invalid" };
+  }
+
+  /** What people without a key may do once the project has keys. */
+  private publicAccess(): PublicAccess {
+    const row = this.sql.exec<{ value: string }>(`SELECT value FROM meta WHERE key = 'public_access'`).toArray()[0];
+    return row?.value === "read" ? "read" : "none";
+  }
+
+  private async handleAccess(request: Request): Promise<Response> {
+    if (request.method === "GET" || request.method === "HEAD") {
+      return Response.json({ protected: this.hasKeys(), publicAccess: this.publicAccess() });
+    }
+    // PUT
+    const body = (await request.json().catch(() => null)) as { publicAccess?: unknown } | null;
+    if (!this.hasKeys()) return badRequest("Only a project with keys can limit what people without a key can do. Add a key first.");
+    const next = body?.publicAccess;
+    if (!PUBLIC_ACCESS.includes(next as PublicAccess)) return badRequest(`"publicAccess" must be one of: ${PUBLIC_ACCESS.join(", ")}.`);
+    this.sql.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('public_access', ?)`, next as string);
+    // Viewers without a key lose access as soon as it's turned off.
+    if (next === "none") this.closeSockets((s) => !s.readOnly, "required");
+    return Response.json({ ok: true, protected: true, publicAccess: next });
   }
 
   private listKeys(currentId: string | null): KeyInfo[] {
@@ -219,18 +240,18 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   /** Sends a socket that's allowed in the project and tells everyone else it arrived. */
-  private welcome(ws: WebSocket, keyId: string | null) {
-    ws.serializeAttachment({ keyId } satisfies SocketState);
+  private welcome(ws: WebSocket, keyId: string | null, readOnly = false) {
+    ws.serializeAttachment({ keyId, ...(readOnly ? { readOnly } : {}) } satisfies SocketState);
     const peers = this.peers();
-    ws.send(JSON.stringify({ t: "init", doc: this.load(), version: this.version, peers } satisfies ServerMessage));
+    const init: ServerMessage = { t: "init", doc: this.load(), version: this.version, peers, ...(readOnly ? { readOnly } : {}) };
+    ws.send(JSON.stringify(init));
     this.broadcast({ t: "presence", peers }, ws);
   }
 
   /** Disconnects browsers that no longer have access, so they ask for a key. */
-  private closeSockets(keep: (keyId: string | null) => boolean, reason: "required" | "invalid") {
+  private closeSockets(keep: (state: SocketState) => boolean, reason: "required" | "invalid") {
     for (const ws of this.ctx.getWebSockets()) {
-      const keyId = socketState(ws).keyId ?? null;
-      if (keep(keyId)) continue;
+      if (keep(socketState(ws))) continue;
       try {
         ws.close(KEY_CLOSE_CODE, reason);
       } catch {
@@ -260,7 +281,7 @@ export class ProjectRoom extends DurableObject<Env> {
     }
     const removed = this.sql.exec(`DELETE FROM keys WHERE id = ? RETURNING id`, itemId).toArray().length > 0;
     if (!removed) return Response.json({ ok: false, error: `No key with id "${itemId}".` }, { status: 404 });
-    this.closeSockets((id) => id !== itemId, "invalid");
+    this.closeSockets((s) => s.keyId !== itemId, "invalid");
     return Response.json({ ok: true, revoked: itemId });
   }
 
@@ -302,11 +323,16 @@ export class ProjectRoom extends DurableObject<Env> {
     }
 
     const auth = await this.authorize(request);
-    if ("denied" in auth) return keyDenied(auth.denied);
+    if ("denied" in auth) return refuse(request, keyDenied(auth.denied));
+    const reading = request.method === "GET" || request.method === "HEAD";
+    if (auth.readOnly && !(reading && READ_ACTIONS.has(action))) return refuse(request, readOnlyDenied());
 
     switch (action) {
       case "keys":
         return this.handleKeys(request, auth.keyId, itemId);
+
+      case "access":
+        return this.handleAccess(request);
 
 
       case "":
@@ -318,7 +344,7 @@ export class ProjectRoom extends DurableObject<Env> {
 
       case "llms.txt": {
         const doc = this.load();
-        return new Response(projectLlmsTxt(doc, url.origin, projectId!, this.hasKeys()), {
+        return new Response(projectLlmsTxt(doc, url.origin, projectId!, this.hasKeys(), auth.readOnly), {
           headers: { "Content-Type": "text/markdown; charset=utf-8" },
         });
       }
@@ -471,13 +497,16 @@ export class ProjectRoom extends DurableObject<Env> {
       if (!socketState(ws).waiting) return;
       const auth = await this.checkKey(typeof msg.key === "string" ? msg.key : null);
       if ("denied" in auth) ws.close(KEY_CLOSE_CODE, auth.denied);
-      else this.welcome(ws, auth.keyId);
+      else this.welcome(ws, auth.keyId, auth.readOnly);
       return;
     }
-    if (socketState(ws).waiting) return;
+    const state = socketState(ws);
+    if (state.waiting) return;
     if (msg?.t !== "op" || typeof msg.opId !== "string") return;
 
     const opId = msg.opId.slice(0, 64);
+    // Viewers without a key can't edit; the ack makes their app drop the edit.
+    if (state.readOnly) return ws.send(JSON.stringify({ t: "ack", opId } satisfies ServerMessage));
     const op = sanitizeOp(msg.op);
     // Invalid or no-op ops are acked back so the sender drops them from its pending queue.
     // Edits over the socket come from the browser app, so they're the user's.
@@ -512,10 +541,17 @@ function opTargetId(op: Op): string | undefined {
   }
 }
 
-type KeyCheck = { keyId: string | null } | { denied: "required" | "invalid" };
+/** `readOnly`: no key, on a protected project that lets people without one look. */
+type KeyCheck = { keyId: string | null; readOnly?: boolean } | { denied: "required" | "invalid" };
 
-/** What a socket is allowed to see: `waiting` until it sends a valid key, then the key's id (null on an open project). */
-type SocketState = { keyId?: string | null; waiting?: boolean };
+/**
+ * What a socket is allowed to see: nothing while `waiting` for its key; then everything, with the
+ * key's id (null on an open project) or, for a viewer without a key, `readOnly`.
+ */
+type SocketState = { keyId?: string | null; waiting?: boolean; readOnly?: boolean };
+
+/** What people without a key may still GET on a read-only project. */
+const READ_ACTIONS = new Set(["", "export", "llms.txt", "documents", "activity", "access"]);
 const socketState = (ws: WebSocket): SocketState => (ws.deserializeAttachment() as SocketState | null) ?? {};
 
 /**
@@ -539,6 +575,26 @@ const keyDenied = (reason: "required" | "invalid") =>
           : "That key isn't valid for this project. It may have been revoked.",
     },
     { status: 401 },
+  );
+
+/**
+ * Answers without using the request's body. The runtime reports an error for a body nobody read
+ * (cancelling it isn't enough), so read it through first, a chunk at a time to keep memory flat.
+ */
+async function refuse(request: Request, response: Response): Promise<Response> {
+  const reader = request.body?.getReader();
+  try {
+    while (reader && !(await reader.read()).done);
+  } catch {
+    // The client went away; nothing left to read.
+  }
+  return response;
+}
+
+const readOnlyDenied = () =>
+  Response.json(
+    { ok: false, code: "read_only", error: `Without a key this project is read-only. Send a key in the ${KEY_HEADER} header to change it.` },
+    { status: 403 },
   );
 
 const badRequest = (error: string) => Response.json({ ok: false, error }, { status: 400 });

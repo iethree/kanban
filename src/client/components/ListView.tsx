@@ -6,6 +6,7 @@ import { AlignLeft, ChevronRight, Plus } from "lucide-react";
 import { columnIcon } from "../../shared/column-icons";
 import type { Card, Column, Doc, Op } from "../../shared/types";
 import { newId } from "../../shared/validate";
+import { useReadOnly } from "../lib/readonly";
 import { DROP_ANIMATION, useCardDnd } from "../lib/useCardDnd";
 import { Composer } from "./Column";
 import { PRIORITY_LABEL, PriorityIcon, StatusIcon, timeAgo } from "./ui";
@@ -69,6 +70,7 @@ const ListSection = memo(function ListSection({
   // onto a collapsed section.
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const [composing, setComposing] = useState(false);
+  const readOnly = useReadOnly();
   const visible = cardIds.filter((id) => cards[id]);
   const bodyId = `list-section-${column.id}`;
 
@@ -96,15 +98,17 @@ const ListSection = memo(function ListSection({
           <span className="list-section-name">{column.name || "Untitled"}</span>
           <span className="column-count">{visible.length}</span>
         </button>
-        <button
-          type="button"
-          className="icon-btn list-section-add"
-          aria-label={`Add card to ${column.name}`}
-          title="Add card"
-          onClick={addCard}
-        >
-          <Plus size={15} />
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className="icon-btn list-section-add"
+            aria-label={`Add card to ${column.name}`}
+            title="Add card"
+            onClick={addCard}
+          >
+            <Plus size={15} />
+          </button>
+        )}
       </header>
 
       {!collapsed && (
@@ -116,7 +120,9 @@ const ListSection = memo(function ListSection({
               ))}
             </div>
           </SortableContext>
-          {composing ? (
+          {readOnly ? (
+            !visible.length && <p className="list-empty">No cards</p>
+          ) : composing ? (
             <div className="list-composer">
               <Composer
                 onAdd={(title) =>

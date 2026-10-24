@@ -90,7 +90,8 @@ export type ClientMessage =
 
 /** Messages sent from the project room to browsers. */
 export type ServerMessage =
-  | { t: "init"; doc: Doc; version: number; peers: number }
+  /** `readOnly`: this browser has no key, and the project lets people without one only look. */
+  | { t: "init"; doc: Doc; version: number; peers: number; readOnly?: boolean }
   | { t: "reset"; doc: Doc; version: number }
   | { t: "op"; opId: string; op: Op; at: number; version: number }
   | { t: "ack"; opId: string }

@@ -349,6 +349,7 @@ function helpBody(origin: string): string {
       ["kanban keys", "List the project's keys"],
       ["kanban keys add", "Create a key. The first one protects the project and is saved in .kanban"],
       ["kanban keys revoke <id|first characters>", "Revoke a key (not the one you're using)"],
+      ["kanban access [none|read-only]", "Show or set what people without a key can do"],
     ]),
     "",
     section("Claude Code", [

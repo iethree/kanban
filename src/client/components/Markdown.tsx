@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import { useReadOnly } from "../lib/readonly";
 import { useRemoteDraft } from "../lib/useRemoteDraft";
 import { useAutosize } from "./ui";
 
@@ -48,6 +49,15 @@ export function MarkdownField({
   const draft = useRemoteDraft(value, onCommit);
   const ref = useRef<HTMLTextAreaElement>(null);
   useAutosize(ref, editing ? draft.value : "");
+  const readOnly = useReadOnly();
+
+  if (readOnly) {
+    return value ? (
+      <div className={`md-field is-static ${className}`}>
+        <Markdown source={value} />
+      </div>
+    ) : null;
+  }
 
   if (!editing) {
     return (

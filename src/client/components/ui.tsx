@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import type { ColumnIcon } from "../../shared/column-icons";
 import type { Priority } from "../../shared/types";
+import { useReadOnly } from "../lib/readonly";
 import { useTheme, type ThemePref } from "../lib/theme";
 
 // -- Menu -------------------------------------------------------------------
@@ -218,6 +219,12 @@ export function EditableText({
   const [draft, setDraft] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useAutosize(textareaRef, draft ?? "");
+  const readOnly = useReadOnly();
+
+  if (readOnly) {
+    // Nothing to prompt for when nobody here can fill it in.
+    return value ? <div className={`editable is-static ${className}`}>{value}</div> : null;
+  }
 
   const commit = () => {
     if (draft === null) return;

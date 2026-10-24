@@ -3,12 +3,14 @@ import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
 import { LIMITS, type Doc, type Op } from "../../shared/types";
 import { newId } from "../../shared/validate";
+import { useReadOnly } from "../lib/readonly";
 import { DROP_ANIMATION, useCardDnd } from "../lib/useCardDnd";
 import { CardOverlay } from "./Card";
 import { BoardColumn } from "./Column";
 
 export function BoardView({ doc, dispatch, onOpenCard }: { doc: Doc; dispatch: (op: Op) => void; onOpenCard: (id: string) => void }) {
   const { items, activeCard, contextProps } = useCardDnd(doc, dispatch);
+  const readOnly = useReadOnly();
 
   return (
     <DndContext {...contextProps}>
@@ -25,10 +27,12 @@ export function BoardView({ doc, dispatch, onOpenCard }: { doc: Doc; dispatch: (
             onOpenCard={onOpenCard}
           />
         ))}
-        <AddColumn
-          disabled={doc.columns.length >= LIMITS.columns}
-          onAdd={(name) => dispatch({ type: "addColumn", id: newId(), name })}
-        />
+        {!readOnly && (
+          <AddColumn
+            disabled={doc.columns.length >= LIMITS.columns}
+            onAdd={(name) => dispatch({ type: "addColumn", id: newId(), name })}
+          />
+        )}
       </div>
       <DragOverlay dropAnimation={DROP_ANIMATION}>{activeCard ? <CardOverlay card={activeCard} /> : null}</DragOverlay>
     </DndContext>

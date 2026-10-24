@@ -57,6 +57,11 @@ a key. People don't choose keys: a key is 16 random letters and digits, and the 
 its hash.
 
 - The first key protects the project. The browser or `.kanban` that created it starts to use it at once.
+- **Public access** sets what people *without* a key may do: nothing (the default), or view the project
+  without changing it. Set it under "People without a key" in the Keys dialog, or with
+  `kanban access none|read-only`. Viewers see the board, list, documents and activity, but no editing
+  controls, and can enter a key to edit. Over HTTP they can read, and changes get 403 with
+  `"code": "read_only"`.
 - Create as many keys as you like, and revoke any of them at any time, except the one you are using.
   When a key is revoked, browsers that use it are disconnected and asked for another key.
 - Keys never go in URLs, so they can't be shared by accident with a link. Give someone a key
@@ -108,6 +113,7 @@ and a unique prefix is enough. Any text argument can be `-` to read from stdin.
 | `kanban keys` | List the project's keys |
 | `kanban keys add` | Create a key. The first one protects the project and is saved in `.kanban` |
 | `kanban keys revoke <id\|first characters>` | Revoke a key (not the one you're using) |
+| `kanban access [none\|read-only]` | Show or set what people without a key can do on a protected project |
 | `kanban install-skill [--local] [--print]` | Add the `/kanban next` skill to Claude Code (see below) |
 | `kanban upgrade` | Update the CLI to the latest version now |
 
@@ -176,6 +182,7 @@ Agents without a shell can use the API directly. `/llms.txt` explains the app an
 | GET | `/api/p/<id>/keys` | The project's keys: id, first 4 characters, creation time, and whether it's the key you sent |
 | POST | `/api/p/<id>/keys` | Create a key; the response is the only time it's shown |
 | DELETE | `/api/p/<id>/keys/<keyId>` | Revoke a key (not the one you're using) |
+| GET / PUT | `/api/p/<id>/access` | `{"publicAccess": "none" \| "read"}`: what people without a key may do. Changing it needs a key |
 
 On a protected project every route above needs a key. Without a valid one, the API answers 401 with
 `"code": "key_required"` or `"key_invalid"`. Browsers can't set headers on a WebSocket, so the app's

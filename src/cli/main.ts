@@ -11,7 +11,7 @@ import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { toShortId } from "../shared/ids";
 import { CLI_VERSION } from "../shared/cli-version";
-import { KEY_HEADER, KEY_RE, type KeyInfo } from "../shared/keys";
+import { KEY_HEADER, KEY_RE, type KeyInfo, type PublicAccess } from "../shared/keys";
 import { DEFAULT_COLUMNS, LIMITS } from "../shared/types";
 import type { ActivityEntry } from "../shared/activity";
 import type { ExportedProject } from "../shared/validate";
@@ -204,6 +204,11 @@ class Api {
           "This project is protected by a key. Link it with `kanban init <project-url> --key <key>`, or set KANBAN_KEY.",
         );
       }
+      if (code === "read_only") {
+        throw new KeyError(
+          "Without a key this project is read-only. Link it with `kanban init <project-url> --key <key>`, or set KANBAN_KEY.",
+        );
+      }
       if (code === "key_invalid") {
         throw new KeyError(
           "The key for this project doesn't work. It may have been revoked. Get a new key, then run `kanban init <project-url> --key <key>`.",
@@ -223,6 +228,15 @@ class Api {
   keys = () => this.request<{ keys: KeyInfo[] }>("/keys").then((b) => b.keys);
 
   addKey = () => this.request<Omit<KeyInfo, "current"> & { key: string }>("/keys", { method: "POST" });
+
+  access = () => this.request<{ protected: boolean; publicAccess: PublicAccess }>("/access");
+
+  setAccess = (publicAccess: PublicAccess) =>
+    this.request<{ publicAccess: PublicAccess }>("/access", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publicAccess }),
+    });
 
   revokeKey = (id: string) => this.request<{ ok: true }>(`/keys/${id}`, { method: "DELETE" });
 
@@ -525,6 +539,27 @@ const commands: Record<string, Command> = {
     }
 
     throw new CliError("Usage: kanban keys [list|add|revoke <id>]", 2);
+  },
+
+  async access(args, rest) {
+    const ref = projectFor(args);
+    const api = new Api(ref);
+    const describe = (a: { protected: boolean; publicAccess: PublicAccess }) =>
+      !a.protected
+        ? "Open: anyone with the link can view and edit. Add a key (kanban keys add) to protect it."
+        : a.publicAccess === "read"
+          ? "read-only: anyone with the link can view; editing needs a key."
+          : "none: the project needs a key to view or edit.";
+    const wanted = rest[0];
+    if (!wanted) {
+      const current = await api.access();
+      return args.flags.json ? json(current) : out(describe(current));
+    }
+    const names: Record<string, PublicAccess | undefined> = { none: "none", "read-only": "read", read: "read" };
+    const publicAccess = names[wanted];
+    if (!publicAccess) throw new CliError("Usage: kanban access [none|read-only]", 2);
+    await api.setAccess(publicAccess);
+    out(success(st, describe({ protected: true, publicAccess })));
   },
 
   async "install-skill"(args) {

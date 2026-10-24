@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { Doc, Op } from "../../shared/types";
+import { useReadOnly } from "./readonly";
 
 type Items = Record<string, string[]>;
 
@@ -45,7 +46,8 @@ export function useCardDnd(doc: Doc, dispatch: (op: Op) => void) {
     });
   }, [dragItems]);
 
-  const sensors = useSensors(
+  const readOnly = useReadOnly();
+  const allSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
     useSensor(KeyboardSensor, {
@@ -53,6 +55,9 @@ export function useCardDnd(doc: Doc, dispatch: (op: Op) => void) {
       keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space", "Enter"] },
     }),
   );
+  // Viewers who can't edit can't drag either.
+  const noSensors = useSensors();
+  const sensors = readOnly ? noSensors : allSensors;
 
   const findContainer = (id: UniqueIdentifier, from: Items = items) => {
     const key = String(id);

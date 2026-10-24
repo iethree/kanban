@@ -1,4 +1,4 @@
-import { KEY_HEADER, type KeyInfo } from "../../shared/keys";
+import { KEY_HEADER, type KeyInfo, type PublicAccess } from "../../shared/keys";
 
 /** This browser's key for each protected project, by project id. */
 const STORAGE = "kanban.keys.v1";
@@ -26,6 +26,11 @@ export function setKey(projectId: string, key: string) {
   writeAll({ ...readAll(), [projectId]: key });
 }
 
+export function clearKey(projectId: string) {
+  const { [projectId]: _, ...rest } = readAll();
+  writeAll(rest);
+}
+
 /** `fetch` for a project's API, sending this browser's key if it has one. */
 export function apiFetch(projectId: string, path: string, init: RequestInit = {}): Promise<Response> {
   const key = getKey(projectId);
@@ -45,6 +50,16 @@ export const listKeys = (projectId: string) =>
 
 export const createKey = (projectId: string) =>
   apiFetch(projectId, "/keys", { method: "POST" }).then((res) => json<Omit<KeyInfo, "current"> & { key: string }>(res));
+
+export const getAccess = (projectId: string) =>
+  apiFetch(projectId, "/access").then((res) => json<{ protected: boolean; publicAccess: PublicAccess }>(res));
+
+export const setAccess = (projectId: string, publicAccess: PublicAccess) =>
+  apiFetch(projectId, "/access", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ publicAccess }),
+  }).then((res) => json<{ publicAccess: PublicAccess }>(res));
 
 export const revokeKey = (projectId: string, id: string) =>
   apiFetch(projectId, `/keys/${id}`, { method: "DELETE" }).then((res) => json<{ ok: true }>(res));

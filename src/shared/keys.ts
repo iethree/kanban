@@ -13,6 +13,13 @@ export const KEY_HEADER = "X-Kanban-Key";
 /** Close code for a WebSocket whose key is missing, wrong or revoked. */
 export const KEY_CLOSE_CODE = 4401;
 
+/**
+ * What people without a key may do on a protected project: nothing ("none", the default), or look
+ * at everything without changing it ("read").
+ */
+export const PUBLIC_ACCESS = ["none", "read"] as const;
+export type PublicAccess = (typeof PUBLIC_ACCESS)[number];
+
 /** What the server says about a key, without revealing the key itself. */
 export interface KeyInfo {
   id: string;

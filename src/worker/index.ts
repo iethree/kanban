@@ -7,12 +7,13 @@ import { agentLinks, prefersMarkdown, rewriteHomePage, rewriteProjectPage } from
 
 export { ProjectRoom } from "./project-room";
 
-const ROUTE = /^\/api\/p\/([^/]+)(?:\/(ws|export|import|ops|activity|keys|llms\.txt|(?:documents|keys)\/[A-Za-z0-9_-]{1,64}))?\/?$/;
+const ROUTE = /^\/api\/p\/([^/]+)(?:\/(ws|export|import|ops|activity|keys|access|llms\.txt|(?:documents|keys)\/[A-Za-z0-9_-]{1,64}))?\/?$/;
 
 /** The methods each API action accepts; anything not listed is GET-only (HEAD included). */
 function allowedMethods(action: string): string[] {
   if (action === "import" || action === "ops") return ["POST"];
   if (action === "keys") return ["GET", "HEAD", "POST"];
+  if (action === "access") return ["GET", "HEAD", "PUT"];
   if (action.startsWith("keys/")) return ["DELETE"];
   return ["GET", "HEAD"];
 }

@@ -1,57 +1,123 @@
 import { useEffect, useState } from "react";
 import { Copy, KeyRound, Plus } from "lucide-react";
-import { KEY_RE, type KeyInfo } from "../../shared/keys";
-import { createKey, getKey, listKeys, revokeKey, setKey } from "../lib/keys";
+import { KEY_RE, type KeyInfo, type PublicAccess } from "../../shared/keys";
+import { createKey, getAccess, getKey, listKeys, revokeKey, setAccess, setKey } from "../lib/keys";
 import { Modal, timeAgo } from "./ui";
 
-/** Shown instead of the board when the project needs a key this browser doesn't have. */
-export function KeyPrompt({ projectId, problem, onKey }: { projectId: string; problem: "required" | "invalid" | null; onKey: () => void }) {
+type KeyProblem = "required" | "invalid" | null;
+
+/** The key field and its checks, shared by the locked page and the read-only viewer's dialog. */
+function KeyForm({
+  projectId,
+  title,
+  intro,
+  submitLabel,
+  onKey,
+  onCancel,
+}: {
+  projectId: string;
+  title: string;
+  intro: string;
+  submitLabel: string;
+  onKey: () => void;
+  onCancel?: () => void;
+}) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div className="key-prompt">
-      <form
-        className="modal-panel key-prompt-panel"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const key = value.trim();
-          if (!KEY_RE.test(key)) return setError("A key is 16 letters and digits.");
-          setError(null);
-          setKey(projectId, key);
-          onKey();
-        }}
-      >
-        <div className="modal-header">
-          <h2>
-            <KeyRound size={18} /> This project needs a key
-          </h2>
-          <p>
-            {problem === "invalid"
-              ? "That key doesn't work for this project. It may have been revoked. Enter another key."
-              : "The project's owners protected it with keys. Enter a key to open it. Anyone who can open the project can create one for you, from Keys… in the project menu."}
-          </p>
-        </div>
-        <label className="field">
-          <span>Key</span>
-          <input
-            autoFocus
-            className="key-input"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            spellCheck={false}
-            autoComplete="off"
-            maxLength={64}
-          />
-        </label>
-        {error && <p className="key-error">{error}</p>}
-        <div className="modal-footer">
-          <button type="submit" className="btn btn-primary" disabled={!value.trim()}>
-            Open project
+    <form
+      className="modal-panel key-prompt-panel"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const key = value.trim();
+        if (!KEY_RE.test(key)) return setError("A key is 16 letters and digits.");
+        setError(null);
+        setKey(projectId, key);
+        onKey();
+      }}
+    >
+      <div className="modal-header">
+        <h2>
+          <KeyRound size={18} /> {title}
+        </h2>
+        <p>{intro}</p>
+      </div>
+      <label className="field">
+        <span>Key</span>
+        <input
+          autoFocus
+          className="key-input"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+          maxLength={64}
+        />
+      </label>
+      {error && <p className="key-error">{error}</p>}
+      <div className="modal-footer">
+        {onCancel && (
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            Cancel
           </button>
-        </div>
-      </form>
+        )}
+        <button type="submit" className="btn btn-primary" disabled={!value.trim()}>
+          {submitLabel}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+const INVALID_KEY = "That key doesn't work for this project. It may have been revoked. Enter another key.";
+
+/** Shown instead of the board when the project needs a key this browser doesn't have. */
+export function KeyPrompt({ projectId, problem, onKey }: { projectId: string; problem: KeyProblem; onKey: () => void }) {
+  return (
+    <div className="key-prompt">
+      <KeyForm
+        projectId={projectId}
+        title="This project needs a key"
+        intro={
+          problem === "invalid"
+            ? INVALID_KEY
+            : "The project's owners protected it with keys. Enter a key to open it. Anyone who can open the project can create one for you, from Keys… in the project menu."
+        }
+        submitLabel="Open project"
+        onKey={onKey}
+      />
     </div>
+  );
+}
+
+/** For someone viewing a read-only project: enter a key to be able to edit it. */
+export function EnterKeyDialog({
+  projectId,
+  problem,
+  onKey,
+  onClose,
+}: {
+  projectId: string;
+  problem: KeyProblem;
+  onKey: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal open onClose={onClose} className="key-modal">
+      <KeyForm
+        projectId={projectId}
+        title="Edit this project"
+        intro={
+          problem === "invalid"
+            ? INVALID_KEY
+            : "People without a key can only look at this project. Enter a key to edit it. Anyone who can edit the project can create one for you, from Keys… in the project menu."
+        }
+        submitLabel="Use key"
+        onKey={onKey}
+        onCancel={onClose}
+      />
+    </Modal>
   );
 }
 
@@ -70,10 +136,21 @@ export function KeysDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [access, setAccessState] = useState<PublicAccess | null>(null);
+
   const refresh = () =>
-    listKeys(projectId)
-      .then(setKeys)
+    Promise.all([listKeys(projectId), getAccess(projectId)])
+      .then(([keys, access]) => {
+        setKeys(keys);
+        setAccessState(access.publicAccess);
+      })
       .catch((err: Error) => setError(err.message));
+
+  const changeAccess = (next: PublicAccess) =>
+    run(async () => {
+      const res = await setAccess(projectId, next);
+      setAccessState(res.publicAccess);
+    });
 
   useEffect(() => {
     void refresh();
@@ -116,7 +193,9 @@ export function KeysDialog({
           <h2>Keys</h2>
           <p>
             {keys?.length
-              ? "People need the link and one of these keys to open this project. Revoke a key to take access away from everyone who uses it."
+              ? access === "read"
+                ? "Anyone with the link can view this project, and people need one of these keys to edit it. Revoke a key to take access away from everyone who uses it."
+                : "People need the link and one of these keys to open this project. Revoke a key to take access away from everyone who uses it."
               : "At the moment anyone with the link can open and edit this project. Create a key to protect it: after that, people need the link and a key."}
           </p>
         </div>
@@ -159,6 +238,21 @@ export function KeysDialog({
               </li>
             ))}
           </ul>
+        )}
+
+        {keys && keys.length > 0 && access && (
+          <label className="field key-access">
+            <span>People without a key</span>
+            <select
+              className="select"
+              value={access}
+              disabled={busy}
+              onChange={(e) => changeAccess(e.target.value as PublicAccess)}
+            >
+              <option value="none">Can't open the project</option>
+              <option value="read">Can view, but not edit</option>
+            </select>
+          </label>
         )}
 
         {error && <p className="key-error">{error}</p>}

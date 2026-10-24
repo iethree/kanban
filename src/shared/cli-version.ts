@@ -1,2 +1,2 @@
 /** The kanban CLI's version. The Worker serves it at /kanban.version so installed CLIs can tell when to update. */
-export const CLI_VERSION = "1.5.0";
+export const CLI_VERSION = "1.6.0";

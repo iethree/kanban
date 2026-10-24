@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Ellipsis, FileText, Plus, Trash2 } from "lucide-react";
 import { LIMITS, type Doc, type Op, type ProjectDocument } from "../../shared/types";
 import { newId } from "../../shared/validate";
+import { useReadOnly } from "../lib/readonly";
 import { navigate } from "../lib/router";
 import { useRemoteDraft } from "../lib/useRemoteDraft";
 import { MarkdownField } from "./Markdown";
@@ -36,15 +37,18 @@ export function DocumentsView({
   };
 
   const atLimit = documents.length >= LIMITS.documents;
+  const readOnly = useReadOnly();
 
   return (
     <div className={`docs${selected ? " has-selection" : ""}${documents.length ? "" : " is-empty"}`}>
       <aside className="docs-sidebar" aria-label="Documents">
         <div className="docs-sidebar-header">
           <span>Documents</span>
-          <button type="button" className="icon-btn" title="New document" aria-label="New document" onClick={create} disabled={atLimit}>
-            <Plus size={15} />
-          </button>
+          {!readOnly && (
+            <button type="button" className="icon-btn" title="New document" aria-label="New document" onClick={create} disabled={atLimit}>
+              <Plus size={15} />
+            </button>
+          )}
         </div>
         {documents.length > 0 ? (
           <ul className="docs-list">
@@ -84,12 +88,18 @@ export function DocumentsView({
         ) : (
           <div className="docs-placeholder">
             <FileText size={22} />
-            <h2>{documents.length ? "Select a document" : "Keep notes alongside the board"}</h2>
-            <p>Documents are Markdown pages for specs, plans and meeting notes. Everyone with the link can edit them.</p>
-            <button type="button" className="btn btn-primary" onClick={create} disabled={atLimit}>
-              <Plus size={15} />
-              New document
-            </button>
+            {readOnly ? (
+              <h2>{documents.length ? "Select a document" : "No documents yet"}</h2>
+            ) : (
+              <>
+                <h2>{documents.length ? "Select a document" : "Keep notes alongside the board"}</h2>
+                <p>Documents are Markdown pages for specs, plans and meeting notes. Everyone with the link can edit them.</p>
+                <button type="button" className="btn btn-primary" onClick={create} disabled={atLimit}>
+                  <Plus size={15} />
+                  New document
+                </button>
+              </>
+            )}
           </div>
         )}
       </section>
@@ -111,6 +121,7 @@ function DocumentEditor({
   const title = useRemoteDraft(d.title, (title) => dispatch({ type: "updateDocument", id: d.id, patch: { title } }));
   const titleRef = useRef<HTMLTextAreaElement>(null);
   useAutosize(titleRef, title.value);
+  const readOnly = useReadOnly();
 
   return (
     <article className="doc-editor">
@@ -127,19 +138,21 @@ function DocumentEditor({
           Documents
         </a>
         <span className="muted doc-updated">Updated {timeAgo(d.updatedAt)}</span>
-        <Menu label="Document options" trigger={<Ellipsis size={16} />}>
-          <MenuItem
-            danger
-            icon={<Trash2 size={14} />}
-            onSelect={() => {
-              if (!confirm(`Delete “${d.title || "Untitled"}”? This can't be undone.`)) return;
-              dispatch({ type: "deleteDocument", id: d.id });
-              navigate(backHref);
-            }}
-          >
-            Delete document
-          </MenuItem>
-        </Menu>
+        {!readOnly && (
+          <Menu label="Document options" trigger={<Ellipsis size={16} />}>
+            <MenuItem
+              danger
+              icon={<Trash2 size={14} />}
+              onSelect={() => {
+                if (!confirm(`Delete “${d.title || "Untitled"}”? This can't be undone.`)) return;
+                dispatch({ type: "deleteDocument", id: d.id });
+                navigate(backHref);
+              }}
+            >
+              Delete document
+            </MenuItem>
+          </Menu>
+        )}
       </div>
 
       <textarea
@@ -149,7 +162,8 @@ function DocumentEditor({
         placeholder="Untitled"
         aria-label="Document title"
         maxLength={LIMITS.title}
-        autoFocus={isNew}
+        readOnly={readOnly}
+        autoFocus={isNew && !readOnly}
         {...title}
         onKeyDown={(e) => {
           if (e.key === "Enter") {

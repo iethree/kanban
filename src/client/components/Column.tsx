@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Ellipsis, Plus, Trash2 } from "lucide-react";
 import { COLUMN_ICONS, COLUMN_ICON_LABEL, columnIcon } from "../../shared/column-icons";
 import { LIMITS, type Card, type Column, type Op } from "../../shared/types";
 import { newId } from "../../shared/validate";
+import { useReadOnly } from "../lib/readonly";
 import { SortableCard } from "./Card";
 import { EditableText, Menu, MenuItem, MenuSeparator, StatusIcon, useAutosize } from "./ui";
 
@@ -29,12 +30,19 @@ export const BoardColumn = memo(function BoardColumn({
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const [composing, setComposing] = useState(false);
+  const readOnly = useReadOnly();
   const visible = cardIds.filter((id) => cards[id]);
 
   return (
     <section ref={setNodeRef} className={`column${isOver ? " is-over" : ""}`} aria-label={column.name}>
       <header className="column-header">
-        <ColumnIconMenu column={column} dispatch={dispatch} />
+        {readOnly ? (
+          <span className="column-icon-btn is-static" title={COLUMN_ICON_LABEL[columnIcon(column)]}>
+            <StatusIcon icon={columnIcon(column)} />
+          </span>
+        ) : (
+          <ColumnIconMenu column={column} dispatch={dispatch} />
+        )}
         <EditableText
           value={column.name}
           placeholder="Untitled"
@@ -44,46 +52,48 @@ export const BoardColumn = memo(function BoardColumn({
           onCommit={(name) => dispatch({ type: "renameColumn", id: column.id, name: name || column.name })}
         />
         <span className="column-count">{visible.length}</span>
-        <div className="column-actions">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={`Add card to ${column.name}`}
-            title="Add card"
-            onClick={() => setComposing(true)}
-          >
-            <Plus size={15} />
-          </button>
-          <Menu label="Column options" trigger={<Ellipsis size={15} />}>
-            <MenuItem
-              icon={<ArrowLeft size={14} />}
-              disabled={index === 0}
-              onSelect={() => dispatch({ type: "moveColumn", id: column.id, index: index - 1 })}
+        {!readOnly && (
+          <div className="column-actions">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={`Add card to ${column.name}`}
+              title="Add card"
+              onClick={() => setComposing(true)}
             >
-              Move left
-            </MenuItem>
-            <MenuItem
-              icon={<ArrowRight size={14} />}
-              disabled={index === columnCount - 1}
-              onSelect={() => dispatch({ type: "moveColumn", id: column.id, index: index + 1 })}
-            >
-              Move right
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem
-              danger
-              icon={<Trash2 size={14} />}
-              onSelect={() => {
-                const n = visible.length;
-                if (n && !confirm(`Delete “${column.name}” and its ${n} card${n === 1 ? "" : "s"}? This can't be undone.`))
-                  return;
-                dispatch({ type: "deleteColumn", id: column.id });
-              }}
-            >
-              Delete column
-            </MenuItem>
-          </Menu>
-        </div>
+              <Plus size={15} />
+            </button>
+            <Menu label="Column options" trigger={<Ellipsis size={15} />}>
+              <MenuItem
+                icon={<ArrowLeft size={14} />}
+                disabled={index === 0}
+                onSelect={() => dispatch({ type: "moveColumn", id: column.id, index: index - 1 })}
+              >
+                Move left
+              </MenuItem>
+              <MenuItem
+                icon={<ArrowRight size={14} />}
+                disabled={index === columnCount - 1}
+                onSelect={() => dispatch({ type: "moveColumn", id: column.id, index: index + 1 })}
+              >
+                Move right
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem
+                danger
+                icon={<Trash2 size={14} />}
+                onSelect={() => {
+                  const n = visible.length;
+                  if (n && !confirm(`Delete “${column.name}” and its ${n} card${n === 1 ? "" : "s"}? This can't be undone.`))
+                    return;
+                  dispatch({ type: "deleteColumn", id: column.id });
+                }}
+              >
+                Delete column
+              </MenuItem>
+            </Menu>
+          </div>
+        )}
       </header>
 
       <SortableContext items={visible} strategy={verticalListSortingStrategy}>
@@ -94,7 +104,7 @@ export const BoardColumn = memo(function BoardColumn({
         </div>
       </SortableContext>
 
-      {composing ? (
+      {readOnly ? null : composing ? (
         <Composer
           onAdd={(title) =>
             dispatch({

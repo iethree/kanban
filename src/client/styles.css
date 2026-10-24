@@ -865,6 +865,17 @@ a.brand:hover {
   color: var(--text-3);
 }
 
+/* Read-only viewers see the text without the edit affordance. */
+.editable.is-static,
+.md-field.is-static {
+  cursor: auto;
+}
+
+.editable.is-static:hover,
+div.md-field.is-static:hover {
+  background: none;
+}
+
 .editable-input {
   display: block;
   width: calc(100% + 12px);
@@ -927,6 +938,15 @@ a.brand:hover {
 }
 
 .column-icon-btn.icon-btn {
+  width: 24px;
+  height: 24px;
+  margin-left: -6px;
+}
+
+.column-icon-btn.is-static {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 24px;
   height: 24px;
   margin-left: -6px;
@@ -2086,6 +2106,14 @@ button.add-column:hover:not(:disabled) {
 
 /* -- Keys ----------------------------------------------------------------- */
 
+.key-modal {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.key-modal .key-prompt-panel {
+  box-shadow: none;
+}
+
 .key-prompt {
   flex: 1;
   display: flex;
@@ -2342,6 +2370,10 @@ button.add-column:hover:not(:disabled) {
   font-size: 12px;
   font-weight: 550;
   color: var(--text-3);
+}
+
+.side-value {
+  font-size: 13.5px;
 }
 
 .side-footer {
@@ -2928,6 +2960,13 @@ div.md-field:hover {
 .list-add-row:hover {
   background: var(--hover);
   color: var(--text-2);
+}
+
+.list-empty {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  color: var(--text-3);
+  font-size: 13px;
 }
 
 .list-composer {

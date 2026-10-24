@@ -43,7 +43,8 @@ function apiReference(base: string): string {
 
 The project URL is the credential. A project can also be **protected with keys**: then every request needs
 one, in an \`X-Kanban-Key: <key>\` header (or \`Authorization: Bearer <key>\`), and a request without a valid key
-gets status 401 with \`"code": "key_required"\` or \`"key_invalid"\`. Keys are 16 letters and digits; ask the
+gets status 401 with \`"code": "key_required"\` or \`"key_invalid"\`. A protected project can allow
+read-only access without a key: then reads work, and changes get 403 with \`"code": "read_only"\`. Keys are 16 letters and digits; ask the
 human for one. Send JSON with \`Content-Type: application/json\`.
 
 | Method | Path | What it does |
@@ -57,6 +58,8 @@ human for one. Send JSON with \`Content-Type: application/json\`.
 | GET | \`${base}/keys\` | The project's keys: \`{"keys": [{"id", "hint", "createdAt", "current"}]}\`. \`hint\` is the key's first 4 characters; \`current\` marks the key you sent. |
 | POST | \`${base}/keys\` | Create a key. Returns \`{"key", "id", "hint", "createdAt"}\`; the key is never shown again. The first key protects the project, so keep it. Only if a human asks. |
 | DELETE | \`${base}/keys/<id>\` | Revoke a key. You can't revoke the key you're using. Only if a human asks. |
+| GET | \`${base}/access\` | \`{"protected": bool, "publicAccess": "none" \| "read"}\`: what people without a key may do on a protected project. |
+| PUT | \`${base}/access\` | Body \`{"publicAccess": "none" \| "read"}\`. \`read\` lets anyone with the link look but not edit. Needs a key. Only if a human asks. |
 
 \`POST /ops\` validates every op before applying any. On success it returns
 \`{"ok": true, "version": n, "url": "<project page>", "results": [{"type", "id", "number", "changed"}]}\`, where \`id\` is the id of
@@ -211,7 +214,8 @@ function cardLine(card: Card): string {
   return `- **#${card.number}** ${oneLine(card.title) || "(untitled)"} _(${meta})_`;
 }
 
-export function projectLlmsTxt(doc: Doc, origin: string, projectId: string, isProtected = false): string {
+/** `readOnlyGuest`: the reader has no key and the project lets them look but not edit. */
+export function projectLlmsTxt(doc: Doc, origin: string, projectId: string, isProtected = false, readOnlyGuest = false): string {
   const shortId = toShortId(projectId);
   const base = `${origin}/api/p/${shortId}`;
   const pageUrl = doc.initialized ? `${origin}${projectPath(projectId, doc.title)}` : `${origin}/p/${shortId}`;
@@ -256,9 +260,11 @@ ${WORKING_AGREEMENT}
   return `# ${oneLine(doc.title) || "Untitled project"}
 
 > Kanban project at ${pageUrl}. ${
-    isProtected
-      ? "It is protected: send your key with every request (`--key` or `KANBAN_KEY` for the CLI; the `X-Kanban-Key` header over HTTP; the commands below read it from `$KANBAN_KEY`)."
-      : "Anyone with that link can view and edit."
+    readOnlyGuest
+      ? "It is protected, and you have no key, so you can read it but not change it. To edit, ask the human for a key and send it with every request (`--key` or `KANBAN_KEY` for the CLI; the `X-Kanban-Key` header over HTTP; the commands below read it from `$KANBAN_KEY`)."
+      : isProtected
+        ? "It is protected: send your key with every request (`--key` or `KANBAN_KEY` for the CLI; the `X-Kanban-Key` header over HTTP; the commands below read it from `$KANBAN_KEY`)."
+        : "Anyone with that link can view and edit."
   } Humans may be watching live.${
     doc.description ? `\n>\n> ${doc.description.trim().split("\n").join("\n> ")}` : ""
   }

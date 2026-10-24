@@ -27,4 +27,6 @@ test("a protected project's llms.txt sends the key in its examples", () => {
   expect(locked).toContain('curl -s -H "X-Kanban-Key: $KANBAN_KEY" https://x.test/api/p/');
   expect(locked).toContain("--key <key>");
   expect(locked).toContain("It is protected");
+  const guest = projectLlmsTxt(doc, "https://x.test", id, true, true);
+  expect(guest).toContain("you can read it but not change it");
 });

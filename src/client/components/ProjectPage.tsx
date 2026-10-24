@@ -6,13 +6,14 @@ import { toShortId } from "../../shared/ids";
 import { projectPath, type ProjectRoute } from "../../shared/urls";
 import { downloadProject, pickJsonFile, uploadProject } from "../lib/files";
 import { getKey } from "../lib/keys";
+import { ReadOnlyContext } from "../lib/readonly";
 import { rememberProject } from "../lib/recent";
 import { navigate, useSearchParam } from "../lib/router";
 import { useProject, type ConnectionStatus } from "../lib/sync";
 import { BoardSkeleton, BoardView } from "./BoardView";
 import { ActivityView } from "./ActivityView";
 import { CardModal } from "./CardModal";
-import { KeyPrompt, KeysDialog } from "./Keys";
+import { EnterKeyDialog, KeyPrompt, KeysDialog } from "./Keys";
 import { DocumentsView } from "./Documents";
 import { ListView } from "./ListView";
 import { SetupDialog } from "./SetupDialog";
@@ -22,9 +23,14 @@ import { EditableText, Logo, Menu, MenuItem, MenuSeparator, MenuSwatches, ThemeT
 export type ProjectView = ProjectRoute["view"];
 
 export function ProjectPage({ projectId, view }: { projectId: string; view: ProjectView }) {
-  const { doc, status, peers, pendingCount, keyProblem, retry, dispatch, subscribeActivity } = useProject(projectId);
+  const { doc, status, peers, pendingCount, keyProblem, readOnly, retry, dispatch, subscribeActivity } = useProject(projectId);
   const [openCardId, setOpenCardId] = useSearchParam("card");
   const [keysOpen, setKeysOpen] = useState(false);
+  const [enterKeyOpen, setEnterKeyOpen] = useState(false);
+  // The key worked: the viewer can edit now.
+  useEffect(() => {
+    if (!readOnly) setEnterKeyOpen(false);
+  }, [readOnly]);
   const [toast, showToast] = useToast();
   // Until the project loads we don't know its name, so links fall back to the generic slug.
   const base = projectPath(projectId, doc?.title ?? "");
@@ -111,153 +117,173 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
   }, [doc, openCardId]);
 
   return (
-    <div className="board-page">
-      <header className="topbar">
-        <a
-          href="/"
-          className="brand"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("/");
-          }}
-        >
-          <Logo color={color} />
-          <span>Kanban</span>
-        </a>
-        <span className="crumb-sep">/</span>
-        <span className="crumb">{doc?.initialized ? doc.title || "Untitled project" : status === "locked" ? "Protected project" : "New project"}</span>
+    <ReadOnlyContext.Provider value={readOnly}>
+      <div className="board-page">
+        <header className="topbar">
+          <a
+            href="/"
+            className="brand"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/");
+            }}
+          >
+            <Logo color={color} />
+            <span>Kanban</span>
+          </a>
+          <span className="crumb-sep">/</span>
+          <span className="crumb">{doc?.initialized ? doc.title || "Untitled project" : status === "locked" ? "Protected project" : "New project"}</span>
 
-        <div className="topbar-actions">
-          <SyncStatus status={status} peers={peers} pending={pendingCount} />
-          <button type="button" className="btn btn-sm" onClick={copyLink} disabled={!doc?.initialized}>
-            <Link2 size={14} />
-            Share
-          </button>
-          <ThemeToggle />
-          <Menu label="Project options" trigger={<Ellipsis size={16} />}>
-            <MenuItem
-              icon={<Download size={14} />}
-              disabled={!doc?.initialized}
-              onSelect={() => doc && downloadProject(doc)}
-            >
-              Export JSON
-            </MenuItem>
-            <MenuItem icon={<Upload size={14} />} onSelect={importFile}>
-              Import JSON…
-            </MenuItem>
-            <MenuSeparator />
-            {doc?.initialized && (
-              <>
-                <MenuSwatches
-                  label="Project colour"
-                  colors={PROJECT_COLORS}
-                  value={color ?? ""}
-                  onSelect={(next) => dispatch({ type: "updateProject", color: next })}
-                />
-                <MenuSeparator />
-              </>
+          <div className="topbar-actions">
+            <SyncStatus status={status} peers={peers} pending={pendingCount} readOnly={readOnly} />
+            {readOnly && (
+              <button type="button" className="btn btn-sm" onClick={() => setEnterKeyOpen(true)}>
+                <KeyRound size={14} />
+                Enter key
+              </button>
             )}
-            <MenuItem icon={<Link2 size={14} />} onSelect={copyLink}>
-              Copy link
-            </MenuItem>
-            <MenuItem icon={<Bot size={14} />} disabled={!doc?.initialized} onSelect={copyAgentInstructions}>
-              Copy agent instructions
-            </MenuItem>
-            <MenuItem icon={<KeyRound size={14} />} disabled={!doc?.initialized} onSelect={() => setKeysOpen(true)}>
-              Keys…
-            </MenuItem>
-          </Menu>
-        </div>
-      </header>
+            <button type="button" className="btn btn-sm" onClick={copyLink} disabled={!doc?.initialized}>
+              <Link2 size={14} />
+              Share
+            </button>
+            <ThemeToggle />
+            <Menu label="Project options" trigger={<Ellipsis size={16} />}>
+              <MenuItem
+                icon={<Download size={14} />}
+                disabled={!doc?.initialized}
+                onSelect={() => doc && downloadProject(doc)}
+              >
+                Export JSON
+              </MenuItem>
+              {!readOnly && (
+                <MenuItem icon={<Upload size={14} />} onSelect={importFile}>
+                  Import JSON…
+                </MenuItem>
+              )}
+              <MenuSeparator />
+              {doc?.initialized && !readOnly && (
+                <>
+                  <MenuSwatches
+                    label="Project colour"
+                    colors={PROJECT_COLORS}
+                    value={color ?? ""}
+                    onSelect={(next) => dispatch({ type: "updateProject", color: next })}
+                  />
+                  <MenuSeparator />
+                </>
+              )}
+              <MenuItem icon={<Link2 size={14} />} onSelect={copyLink}>
+                Copy link
+              </MenuItem>
+              <MenuItem icon={<Bot size={14} />} disabled={!doc?.initialized} onSelect={copyAgentInstructions}>
+                Copy agent instructions
+              </MenuItem>
+              {readOnly ? (
+                <MenuItem icon={<KeyRound size={14} />} onSelect={() => setEnterKeyOpen(true)}>
+                  Enter a key…
+                </MenuItem>
+              ) : (
+                <MenuItem icon={<KeyRound size={14} />} disabled={!doc?.initialized} onSelect={() => setKeysOpen(true)}>
+                  Keys…
+                </MenuItem>
+              )}
+            </Menu>
+          </div>
+        </header>
 
-      {status === "locked" ? (
-        <KeyPrompt projectId={projectId} problem={keyProblem} onKey={retry} />
-      ) : !doc ? (
-        <BoardSkeleton />
-      ) : !doc.initialized ? (
-        <>
-          <BoardSkeleton still />
-          <SetupDialog onSubmit={dispatch} onCancel={() => navigate("/")} />
-        </>
-      ) : (
-        <>
-          <div className="project-header">
-            <div className="project-heading">
-              <EditableText
-                value={doc.title}
-                placeholder="Untitled project"
-                ariaLabel="Project title"
-                className="project-title"
-                maxLength={LIMITS.title}
-                onCommit={(title) => dispatch({ type: "updateProject", title })}
-              />
-              <EditableText
-                value={doc.description}
-                placeholder="Add a description…"
-                ariaLabel="Project description"
-                className="project-description"
-                multiline
-                maxLength={LIMITS.description}
-                onCommit={(description) => dispatch({ type: "updateProject", description })}
-              />
+        {status === "locked" ? (
+          <KeyPrompt projectId={projectId} problem={keyProblem} onKey={retry} />
+        ) : !doc ? (
+          <BoardSkeleton />
+        ) : !doc.initialized ? (
+          <>
+            <BoardSkeleton still />
+            <SetupDialog onSubmit={dispatch} onCancel={() => navigate("/")} />
+          </>
+        ) : (
+          <>
+            <div className="project-header">
+              <div className="project-heading">
+                <EditableText
+                  value={doc.title}
+                  placeholder="Untitled project"
+                  ariaLabel="Project title"
+                  className="project-title"
+                  maxLength={LIMITS.title}
+                  onCommit={(title) => dispatch({ type: "updateProject", title })}
+                />
+                <EditableText
+                  value={doc.description}
+                  placeholder="Add a description…"
+                  ariaLabel="Project description"
+                  className="project-description"
+                  multiline
+                  maxLength={LIMITS.description}
+                  onCommit={(description) => dispatch({ type: "updateProject", description })}
+                />
+              </div>
+
+              <nav className="tabs" aria-label="Project sections">
+                <TabLink href={base} active={view.kind === "board"}>
+                  Board
+                </TabLink>
+                <TabLink href={`${base}/list`} active={view.kind === "list"}>
+                  List
+                </TabLink>
+                <TabLink href={`${base}/docs`} active={view.kind === "docs"}>
+                  Documents
+                  {doc.documentIds.length > 0 && <span className="tab-count">{doc.documentIds.length}</span>}
+                </TabLink>
+                <TabLink href={`${base}/activity`} active={view.kind === "activity"}>
+                  Activity
+                </TabLink>
+                <TabLink href={`${base}/stats`} active={view.kind === "stats"}>
+                  Stats
+                </TabLink>
+              </nav>
             </div>
 
-            <nav className="tabs" aria-label="Project sections">
-              <TabLink href={base} active={view.kind === "board"}>
-                Board
-              </TabLink>
-              <TabLink href={`${base}/list`} active={view.kind === "list"}>
-                List
-              </TabLink>
-              <TabLink href={`${base}/docs`} active={view.kind === "docs"}>
-                Documents
-                {doc.documentIds.length > 0 && <span className="tab-count">{doc.documentIds.length}</span>}
-              </TabLink>
-              <TabLink href={`${base}/activity`} active={view.kind === "activity"}>
-                Activity
-              </TabLink>
-              <TabLink href={`${base}/stats`} active={view.kind === "stats"}>
-                Stats
-              </TabLink>
-            </nav>
+            {view.kind === "board" ? (
+              <BoardView doc={doc} dispatch={dispatch} onOpenCard={openCard} />
+            ) : view.kind === "list" ? (
+              <ListView projectId={projectId} doc={doc} dispatch={dispatch} onOpenCard={openCard} />
+            ) : view.kind === "activity" ? (
+              <ActivityView projectId={projectId} doc={doc} basePath={base} subscribeActivity={subscribeActivity} onOpenCard={openCard} />
+            ) : view.kind === "stats" ? (
+              <StatsView projectId={projectId} doc={doc} subscribeActivity={subscribeActivity} />
+            ) : (
+              <DocumentsView basePath={`${base}/docs`} doc={doc} documentId={view.documentId} dispatch={dispatch} />
+            )}
+          </>
+        )}
+
+        {doc && view.kind !== "docs" && openCardEntry && (
+          <CardModal
+            key={openCardEntry.card.id}
+            card={openCardEntry.card}
+            column={openCardEntry.column}
+            columns={doc.columns}
+            cards={doc.cards}
+            dispatch={dispatch}
+            onClose={() => setOpenCardId(null)}
+          />
+        )}
+
+        {enterKeyOpen && (
+          <EnterKeyDialog projectId={projectId} problem={keyProblem} onKey={retry} onClose={() => setEnterKeyOpen(false)} />
+        )}
+
+        {keysOpen && (
+          <KeysDialog projectId={projectId} onClose={() => setKeysOpen(false)} onCopy={copy} />
+        )}
+
+        {toast && (
+          <div className="toast" role="status">
+            {toast}
           </div>
-
-          {view.kind === "board" ? (
-            <BoardView doc={doc} dispatch={dispatch} onOpenCard={openCard} />
-          ) : view.kind === "list" ? (
-            <ListView projectId={projectId} doc={doc} dispatch={dispatch} onOpenCard={openCard} />
-          ) : view.kind === "activity" ? (
-            <ActivityView projectId={projectId} doc={doc} basePath={base} subscribeActivity={subscribeActivity} onOpenCard={openCard} />
-          ) : view.kind === "stats" ? (
-            <StatsView projectId={projectId} doc={doc} subscribeActivity={subscribeActivity} />
-          ) : (
-            <DocumentsView basePath={`${base}/docs`} doc={doc} documentId={view.documentId} dispatch={dispatch} />
-          )}
-        </>
-      )}
-
-      {doc && view.kind !== "docs" && openCardEntry && (
-        <CardModal
-          key={openCardEntry.card.id}
-          card={openCardEntry.card}
-          column={openCardEntry.column}
-          columns={doc.columns}
-          cards={doc.cards}
-          dispatch={dispatch}
-          onClose={() => setOpenCardId(null)}
-        />
-      )}
-
-      {keysOpen && (
-        <KeysDialog projectId={projectId} onClose={() => setKeysOpen(false)} onCopy={copy} />
-      )}
-
-      {toast && (
-        <div className="toast" role="status">
-          {toast}
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </ReadOnlyContext.Provider>
   );
 }
 
@@ -278,7 +304,17 @@ function TabLink({ href, active, children }: { href: string; active: boolean; ch
   );
 }
 
-function SyncStatus({ status, peers, pending }: { status: ConnectionStatus; peers: number; pending: number }) {
+function SyncStatus({
+  status,
+  peers,
+  pending,
+  readOnly,
+}: {
+  status: ConnectionStatus;
+  peers: number;
+  pending: number;
+  readOnly: boolean;
+}) {
   let tone = "live";
   let label = peers > 1 ? `${peers} online` : "Live";
   let title = peers > 1 ? `${peers} people have this project open` : "Connected. Changes sync in real time.";
@@ -297,6 +333,9 @@ function SyncStatus({ status, peers, pending }: { status: ConnectionStatus; peer
   } else if (pending > 0) {
     tone = "pending";
     label = "Saving…";
+  } else if (readOnly) {
+    label = "Read-only";
+    title = "You can view this project but not edit it. Enter a key to edit.";
   }
   return (
     <span className={`sync sync-${tone}`} title={title} aria-live="polite">

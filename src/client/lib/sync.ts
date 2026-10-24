@@ -4,7 +4,7 @@ import { applyOp } from "../../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../../shared/types";
 import { KEY_CLOSE_CODE } from "../../shared/keys";
 import { newId } from "../../shared/validate";
-import { getKey } from "./keys";
+import { clearKey, getKey } from "./keys";
 
 /** "locked": the project is protected and this browser's key is missing or no longer valid. */
 export type ConnectionStatus = "connecting" | "open" | "offline" | "locked";
@@ -30,6 +30,9 @@ export function useProject(projectId: string) {
   const [pendingCount, setPendingCount] = useState(0);
   /** Why the server refused this browser's key, while `status` is "locked". */
   const [keyProblem, setKeyProblem] = useState<"required" | "invalid" | null>(null);
+  /** No key, on a protected project that lets people without one look but not edit. */
+  const [readOnly, setReadOnly] = useState(false);
+  const readOnlyRef = useRef(false);
 
   const confirmed = useRef<Doc | null>(null);
   const pending = useRef<Pending[]>([]);
@@ -57,6 +60,8 @@ export function useProject(projectId: string) {
     setDoc(null);
 
     let disposed = false;
+    /** The server turned down this browser's key, so it was deleted; say so even after reconnecting without one. */
+    let keyRejected = false;
     let retries = 0;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let pingTimer: ReturnType<typeof setInterval> | undefined;
@@ -66,7 +71,15 @@ export function useProject(projectId: string) {
         case "init":
           // Only now is this browser in: a protected project waits for the key first.
           setStatus("open");
-          setKeyProblem(null);
+          readOnlyRef.current = !!msg.readOnly;
+          setReadOnly(!!msg.readOnly);
+          // A viewer may be one whose key just stopped working; keep saying so.
+          if (!msg.readOnly) {
+            setKeyProblem(null);
+            keyRejected = false;
+          }
+          // Edits made before it turned out this browser can only look are dropped.
+          if (msg.readOnly) pending.current = [];
           confirmed.current = msg.doc;
           setPeers(msg.peers);
           // Ops are idempotent, so resending anything unacknowledged is safe.
@@ -128,7 +141,15 @@ export function useProject(projectId: string) {
         const keyChanged = getKey(projectId) !== key;
         if (e.code === KEY_CLOSE_CODE) {
           if (keyChanged) return reconnect.current();
-          return lock(e.reason === "invalid" ? "invalid" : "required");
+          if (e.reason === "invalid") {
+            // A wrong or revoked key is no use to keep. Without it the project may still be
+            // readable; if not, the next close asks for a key.
+            keyRejected = true;
+            clearKey(projectId);
+            setKeyProblem("invalid");
+            return reconnect.current();
+          }
+          return lock(keyRejected ? "invalid" : "required");
         }
         setStatus("offline");
         retryTimer = setTimeout(connect, Math.min(10_000, 400 * 2 ** retries++));
@@ -164,6 +185,7 @@ export function useProject(projectId: string) {
 
   const dispatch = useCallback(
     (op: Op) => {
+      if (readOnlyRef.current) return;
       const p = { opId: newId(), op };
       pending.current.push(p);
       send(socket.current, p);
@@ -181,7 +203,11 @@ export function useProject(projectId: string) {
   }, []);
 
   /** Connects again, e.g. after the user enters a key. */
-  const retry = useCallback(() => reconnect.current(), []);
+  const retry = useCallback(() => {
+    // A new key gets a fresh verdict.
+    setKeyProblem(null);
+    reconnect.current();
+  }, []);
 
-  return { doc, status, peers, pendingCount, keyProblem, retry, dispatch, subscribeActivity };
+  return { doc, status, peers, pendingCount, keyProblem, readOnly, retry, dispatch, subscribeActivity };
 }
