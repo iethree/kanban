@@ -13,7 +13,7 @@ If you can run shell commands, use the CLI instead of hand-writing HTTP requests
 curl -fsSL ${origin}/install | sh
 ${projectUrl ? `kanban init ${projectUrl}` : `kanban new "Project title"     # or: kanban init <project-url>`}
 kanban board                     # columns and cards: #12 title [priority, size] @assignee
-kanban next                      # the highest-priority unclaimed card
+kanban next                      # the highest-priority unclaimed card in "Todo"
 kanban start 12                  # claim it and move it to In progress
 kanban log 12 "Found the cause: …"
 kanban done 12 "Fixed in a1b2c3d"
@@ -179,7 +179,7 @@ includes the project's \`url\`, which uses the short id.
 \`\`\`sh
 ID=$(uuidgen | tr A-Z a-z)
 curl -s -X POST ${origin}/api/p/$ID/ops -H 'Content-Type: application/json' \\
-  -d '{"ops":[{"type":"init","title":"My project","description":"","columns":["Backlog","In progress","Done"]}]}'
+  -d '{"ops":[{"type":"init","title":"My project","description":"","columns":["Backlog","Todo","In progress","Done"]}]}'
 \`\`\`
 
 Share that \`url\` with the human so they can watch the board.
@@ -214,7 +214,7 @@ export function projectLlmsTxt(doc: Doc, origin: string, projectId: string): str
 
 \`\`\`sh
 curl -s -X POST ${base}/ops -H 'Content-Type: application/json' \\
-  -d '{"ops":[{"type":"init","title":"My project","description":"","columns":["Backlog","In progress","Done"]}]}'
+  -d '{"ops":[{"type":"init","title":"My project","description":"","columns":["Backlog","Todo","In progress","Done"]}]}'
 \`\`\`
 
 ${apiReference(base)}

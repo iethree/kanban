@@ -45,7 +45,7 @@ the board, so don't commit it to a public repository.
 ### Typical loop
 
 ```sh
-kanban next                           # highest-priority unclaimed card in the first column
+kanban next                           # highest-priority unclaimed card in "Todo"
 kanban start 12                       # claim #12 and move it to the top of "In progress"
 kanban log 12 "Root cause: expired token cache"
 kanban done 12 "Fixed in a1b2c3d"     # append the summary and move it to "Done"
@@ -67,7 +67,7 @@ and a unique prefix is enough. Any text argument can be `-` to read from stdin.
 | `kanban url` | Print the project's web address, to share with a human |
 | `kanban board` | Columns and cards: `#12 title [priority, size] @assignee` |
 | `kanban show <card>` | One card, including its description |
-| `kanban next [--column C]` | Highest-priority unclaimed card in the first column (or `C`) |
+| `kanban next [--column C]` | Highest-priority unclaimed card in the Todo column (or `C`) |
 | `kanban add <title> [--column C] [--priority P] [--size S] [--description TEXT\|-]` | Add a card (to the first column by default) |
 | `kanban start <card> [--force] [--column C]` | Claim a card and move it to the in-progress column |
 | `kanban log <card> <text\|->` | Append a timestamped progress note |
@@ -82,9 +82,11 @@ and a unique prefix is enough. Any text argument can be `-` to read from stdin.
 | `kanban doc write <title> [file\|-]` | Create or replace a document |
 | `kanban doc append <title> <text\|->` | Append to a document (creates it if missing) |
 
-Priority is `none | low | medium | high`; size is `none | xs | s | m | l | xl`. `start` looks for a
-column named like "In progress" or "Doing" (falling back to the second column), and `done` for one
-named like "Done" or "Shipped" (falling back to the last), unless you pass `--column`.
+Priority is `none | low | medium | high`; size is `none | xs | s | m | l | xl`. `next` looks for a
+column named like "Todo", "Next" or "Ready" (falling back to the first column), `start` for one named
+like "In progress" or "Doing" (falling back to the second), and `done` for one named like "Done" or
+"Shipped" (falling back to the last), unless you pass `--column`. New projects start with Backlog,
+Todo, In progress and Done.
 
 ### Options and environment
 

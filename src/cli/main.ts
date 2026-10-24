@@ -32,6 +32,7 @@ import {
   parseProjectRef,
   parseSize,
   progressColumn,
+  todoColumn,
   type Args,
   type ProjectRef,
 } from "./lib";
@@ -266,9 +267,8 @@ const commands: Record<string, Command> = {
   async next(args) {
     const ref = projectFor(args);
     const board = await new Api(ref).board();
-    const column = flag(args, "column") ? findColumn(board, flag(args, "column")!) : board.project.columns[0];
-    if (!column) throw new CliError("This project has no columns.");
-    const card = column && nextCard(column);
+    const column = flag(args, "column") ? findColumn(board, flag(args, "column")!) : todoColumn(board);
+    const card = nextCard(column);
     if (args.flags.json) return json(card ? { ...card, status: column.name } : null);
     if (!card) return out(`No unclaimed cards in ${st.bold(column.name)}.`);
     out(formatCard({ ...card, column }, ref, board.project.title, st));

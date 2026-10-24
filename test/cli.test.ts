@@ -10,6 +10,7 @@ import {
   parseArgs,
   parseProjectRef,
   progressColumn,
+  todoColumn,
 } from "../src/cli/lib";
 import { importDoc, exportDoc } from "../src/shared/validate";
 
@@ -80,6 +81,14 @@ describe("board lookups", () => {
     const plain = exportDoc(importDoc({ columns: [{ name: "Todo" }, { name: "Now" }, { name: "Later" }] }));
     expect(progressColumn(plain).name).toBe("Now");
     expect(doneColumn(plain).name).toBe("Later");
+  });
+
+  test("next looks in a Todo-like column, else the first", () => {
+    expect(todoColumn(board).name).toBe("Backlog");
+    const todo = exportDoc(importDoc({ columns: [{ name: "Backlog" }, { name: "To do" }, { name: "In progress" }] }));
+    expect(todoColumn(todo).name).toBe("To do");
+    const next = exportDoc(importDoc({ columns: [{ name: "Ideas" }, { name: "Up next" }] }));
+    expect(todoColumn(next).name).toBe("Up next");
   });
 
   test("next picks the highest-priority unclaimed card", () => {

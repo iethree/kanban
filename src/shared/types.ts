@@ -95,7 +95,7 @@ export type ServerMessage =
   /** New or updated feed entries; an entry whose seq the client already has replaces it. */
   | { t: "activity"; entries: ActivityEntry[] };
 
-export const DEFAULT_COLUMNS = ["Backlog", "In progress", "Done"];
+export const DEFAULT_COLUMNS = ["Backlog", "Todo", "In progress", "Done"];
 
 export const LIMITS = {
   title: 200,

@@ -143,6 +143,10 @@ function columnLike(board: ExportedProject, pattern: RegExp, fallback: (cols: Ex
   return column;
 }
 
+/** Where `next` looks for work: a column named like "Todo"/"Next"/"Ready", else the first column. */
+export const todoColumn = (board: ExportedProject) =>
+  columnLike(board, /\b(to[ -]?do|next|up next|ready|selected)\b/i, (cols) => cols[0]);
+
 /** Where `start` moves cards: a column named like "In progress"/"Doing", else the second column. */
 export const progressColumn = (board: ExportedProject) =>
   columnLike(board, /progress|doing|active|working|wip|started/i, (cols) => cols[1] ?? cols[0]);
@@ -316,7 +320,7 @@ function helpBody(origin: string): string {
     section("Reading", [
       ["kanban board", "Columns and cards: #number title [priority, size] @assignee"],
       ["kanban show <card>", "One card, including its description"],
-      ["kanban next [--column C]", "Highest-priority unclaimed card in the first column (or C)"],
+      ["kanban next [--column C]", "Highest-priority unclaimed card in the Todo column (or C)"],
       ["kanban activity [--limit N]", "What changed lately: moves, claims, edits, notes (default 20)"],
       ["kanban docs", "List documents"],
       ["kanban doc <title|id>", "Print a document's Markdown"],
