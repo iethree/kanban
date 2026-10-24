@@ -39,7 +39,6 @@ export function KeyPrompt({ projectId, problem, onKey }: { projectId: string; pr
             className="key-input"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="16 letters and digits"
             spellCheck={false}
             autoComplete="off"
             maxLength={64}
