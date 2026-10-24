@@ -197,10 +197,14 @@ export class ProjectRoom extends DurableObject<Env> {
    * Checks the request's key. Open projects (no keys) let everyone in with `keyId: null`;
    * otherwise returns the matching key's id, or why access is refused.
    */
-  private async authorize(request: Request, allowQuery: boolean): Promise<{ keyId: string | null } | { denied: "required" | "invalid" }> {
-    if (!this.hasKeys()) return { keyId: null };
+  private async authorize(request: Request): Promise<KeyCheck> {
     const bearer = request.headers.get("Authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
-    const given = request.headers.get(KEY_HEADER) ?? bearer ?? (allowQuery ? new URL(request.url).searchParams.get("key") : null);
+    return this.checkKey(request.headers.get(KEY_HEADER) ?? bearer ?? null);
+  }
+
+  /** Keys are never accepted in URLs, where they'd be shared along with the link. */
+  private async checkKey(given: string | null): Promise<KeyCheck> {
+    if (!this.hasKeys()) return { keyId: null };
     if (!given) return { denied: "required" };
     if (!KEY_RE.test(given)) return { denied: "invalid" };
     const row = this.sql.exec<{ id: string }>(`SELECT id FROM keys WHERE hash = ?`, await hashKey(given)).toArray()[0];
@@ -214,10 +218,18 @@ export class ProjectRoom extends DurableObject<Env> {
       .map((r) => ({ id: r.id, hint: r.hint, createdAt: r.created_at, current: r.id === currentId }));
   }
 
+  /** Sends a socket that's allowed in the project and tells everyone else it arrived. */
+  private welcome(ws: WebSocket, keyId: string | null) {
+    ws.serializeAttachment({ keyId } satisfies SocketState);
+    const peers = this.peers();
+    ws.send(JSON.stringify({ t: "init", doc: this.load(), version: this.version, peers } satisfies ServerMessage));
+    this.broadcast({ t: "presence", peers }, ws);
+  }
+
   /** Disconnects browsers that no longer have access, so they ask for a key. */
   private closeSockets(keep: (keyId: string | null) => boolean, reason: "required" | "invalid") {
     for (const ws of this.ctx.getWebSockets()) {
-      const keyId = (ws.deserializeAttachment() as { keyId?: string | null } | null)?.keyId ?? null;
+      const keyId = socketState(ws).keyId ?? null;
       if (keep(keyId)) continue;
       try {
         ws.close(KEY_CLOSE_CODE, reason);
@@ -254,13 +266,18 @@ export class ProjectRoom extends DurableObject<Env> {
 
   // -- networking -----------------------------------------------------------
 
+  /** Sockets that may see the project: everyone on an open project, and those that sent a valid key. */
+  private members(): WebSocket[] {
+    return this.ctx.getWebSockets().filter((ws) => !socketState(ws).waiting);
+  }
+
   private peers(exclude?: WebSocket): number {
-    return this.ctx.getWebSockets().filter((ws) => ws !== exclude && ws.readyState === WebSocket.OPEN).length;
+    return this.members().filter((ws) => ws !== exclude && ws.readyState === WebSocket.OPEN).length;
   }
 
   private broadcast(msg: ServerMessage, exclude?: WebSocket) {
     const data = JSON.stringify(msg);
-    for (const ws of this.ctx.getWebSockets()) {
+    for (const ws of this.members()) {
       if (ws === exclude) continue;
       try {
         ws.send(data);
@@ -274,22 +291,18 @@ export class ProjectRoom extends DurableObject<Env> {
     const url = new URL(request.url);
     const [, , , projectId, action = "", itemId] = url.pathname.split("/");
 
-    // Browsers can't set headers on a WebSocket, so the socket takes its key from the query string.
-    const auth = await this.authorize(request, action === "ws");
-
-    // Browsers see a refused upgrade only as a failed connection, so they ask an HTTP route why.
-    if ("denied" in auth) return keyDenied(auth.denied);
-
     if (action === "ws") {
       const { 0: client, 1: server } = new WebSocketPair();
       this.ctx.acceptWebSocket(server);
-      server.serializeAttachment({ keyId: auth.keyId });
-      const doc = this.load();
-      const peers = this.peers();
-      server.send(JSON.stringify({ t: "init", doc, version: this.version, peers } satisfies ServerMessage));
-      this.broadcast({ t: "presence", peers }, server);
+      // Browsers can't set headers on a WebSocket, and a key must never go in a URL, so on a
+      // protected project the socket waits for an "auth" message with the key.
+      if (this.hasKeys()) server.serializeAttachment({ waiting: true } satisfies SocketState);
+      else this.welcome(server, null);
       return new Response(null, { status: 101, webSocket: client });
     }
+
+    const auth = await this.authorize(request);
+    if ("denied" in auth) return keyDenied(auth.denied);
 
     switch (action) {
       case "keys":
@@ -453,6 +466,15 @@ export class ProjectRoom extends DurableObject<Env> {
     } catch {
       return;
     }
+    if (msg?.t === "auth") {
+      // Only a socket still waiting for its key needs one; on an open project it's ignored.
+      if (!socketState(ws).waiting) return;
+      const auth = await this.checkKey(typeof msg.key === "string" ? msg.key : null);
+      if ("denied" in auth) ws.close(KEY_CLOSE_CODE, auth.denied);
+      else this.welcome(ws, auth.keyId);
+      return;
+    }
+    if (socketState(ws).waiting) return;
     if (msg?.t !== "op" || typeof msg.opId !== "string") return;
 
     const opId = msg.opId.slice(0, 64);
@@ -489,6 +511,12 @@ function opTargetId(op: Op): string | undefined {
       return op.id;
   }
 }
+
+type KeyCheck = { keyId: string | null } | { denied: "required" | "invalid" };
+
+/** What a socket is allowed to see: `waiting` until it sends a valid key, then the key's id (null on an open project). */
+type SocketState = { keyId?: string | null; waiting?: boolean };
+const socketState = (ws: WebSocket): SocketState => (ws.deserializeAttachment() as SocketState | null) ?? {};
 
 /**
  * Who sent an HTTP request that isn't an op batch (currently only /import).

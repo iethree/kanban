@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, KeyRound, Link2, Plus } from "lucide-react";
+import { Copy, KeyRound, Plus } from "lucide-react";
 import { KEY_RE, type KeyInfo } from "../../shared/keys";
 import { createKey, getKey, listKeys, revokeKey, setKey } from "../lib/keys";
 import { Modal, timeAgo } from "./ui";
@@ -59,12 +59,10 @@ export function KeyPrompt({ projectId, problem, onKey }: { projectId: string; pr
 /** Lists, creates and revokes a project's keys. */
 export function KeysDialog({
   projectId,
-  projectUrl,
   onClose,
   onCopy,
 }: {
   projectId: string;
-  projectUrl: string;
   onClose: () => void;
   onCopy: (text: string, success: string) => void;
 }) {
@@ -112,8 +110,6 @@ export function KeysDialog({
     });
   };
 
-  const linkWithKey = (key: string) => `${projectUrl}#key=${key}`;
-
   return (
     <Modal open onClose={onClose} className="keys-modal">
       <div className="modal-panel">
@@ -132,19 +128,12 @@ export function KeysDialog({
             <p>
               {created.first
                 ? "The project is now protected, and this browser uses this key. "
-                : "Give this key to the person who needs it. "}
+                : "Give this key to the person who needs it, separately from the link. "}
               You can't see this key again after you close this dialog.
             </p>
             <div className="key-created-actions">
               <button type="button" className="btn btn-sm" onClick={() => onCopy(created.key, "Key copied.")}>
                 <Copy size={14} /> Copy key
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => onCopy(linkWithKey(created.key), "Link with key copied. It opens the project without asking for the key.")}
-              >
-                <Link2 size={14} /> Copy link with key
               </button>
             </div>
           </div>

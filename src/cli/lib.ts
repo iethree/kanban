@@ -84,7 +84,7 @@ export interface ProjectRef {
   key?: string;
 }
 
-/** Accepts a page URL (which may end in `#key=<key>`), an API URL, a short id or a UUID. */
+/** Accepts a page URL, an API URL, a short id or a UUID. */
 export function parseProjectRef(ref: string, defaultOrigin: string): ProjectRef {
   const value = ref.trim();
   if (/^https?:\/\//i.test(value)) {
@@ -92,8 +92,7 @@ export function parseProjectRef(ref: string, defaultOrigin: string): ProjectRef 
     const api = url.pathname.match(/^\/api\/p\/([^/]+)/);
     const uuid = api ? toProjectUuid(api[1]!) : parseProjectPath(url.pathname)?.id;
     if (!uuid) throw new CliError(`Couldn't find a project id in ${value}`, 2);
-    const key = new URLSearchParams(url.hash.slice(1)).get("key");
-    return { origin: url.origin, id: toShortId(uuid), ...(key ? { key } : {}) };
+    return { origin: url.origin, id: toShortId(uuid) };
   }
   const uuid = toProjectUuid(value);
   if (!uuid) throw new CliError(`"${value}" isn't a project URL or id`, 2);

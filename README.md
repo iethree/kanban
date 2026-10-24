@@ -59,9 +59,10 @@ its hash.
 - The first key protects the project. The browser or `.kanban` that created it starts to use it at once.
 - Create as many keys as you like, and revoke any of them at any time, except the one you are using.
   When a key is revoked, browsers that use it are disconnected and asked for another key.
-- Browsers keep their key in `localStorage`. A link that ends in `#key=<key>` (**Copy link with key**)
-  saves the key and opens the project. The part after `#` is never sent to the server.
-- The CLI reads the key from `--key`, `KANBAN_KEY`, a `#key=` link, or the `key` field in `.kanban`.
+- Keys never go in URLs, so they can't be shared by accident with a link. Give someone a key
+  separately from the link.
+- Browsers keep their key in `localStorage`, and ask for one when they open a protected project.
+- The CLI reads the key from `--key`, `KANBAN_KEY`, or the `key` field in `.kanban`.
   `kanban init <project-url> --key <key>` saves it there.
 - Over HTTP, send an `X-Kanban-Key: <key>` header (or `Authorization: Bearer <key>`).
 
@@ -177,8 +178,8 @@ Agents without a shell can use the API directly. `/llms.txt` explains the app an
 | DELETE | `/api/p/<id>/keys/<keyId>` | Revoke a key (not the one you're using) |
 
 On a protected project every route above needs a key. Without a valid one, the API answers 401 with
-`"code": "key_required"` or `"key_invalid"`. The WebSocket takes the key as `?key=`, because browsers
-can't set headers on it.
+`"code": "key_required"` or `"key_invalid"`. Browsers can't set headers on a WebSocket, so the app's
+socket sends the key in its first message; the server sends nothing until it gets a valid one.
 
 Card ops accept a card number (`12` or `"#12"`) as the `id`, and `column` names instead of ids.
 `claimCard` returns 409 if someone else holds the card, and `appendToCard` / `appendToDocument` add text

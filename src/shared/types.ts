@@ -83,7 +83,10 @@ export type Op =
   | { type: "appendToDocument"; id: string; text: string };
 
 /** Messages sent from the browser to the project room. */
-export type ClientMessage = { t: "op"; opId: string; op: Op };
+export type ClientMessage =
+  | { t: "op"; opId: string; op: Op }
+  /** The first message on a socket: this browser's key for a protected project, or null. */
+  | { t: "auth"; key: string | null };
 
 /** Messages sent from the project room to browsers. */
 export type ServerMessage =

@@ -103,7 +103,7 @@ function projectFor(args: Args): ProjectRef {
     );
   }
   const ref = parseProjectRef(value, DEFAULT_ORIGIN);
-  const key = flag(args, "key") ?? process.env.KANBAN_KEY ?? ref.key ?? linked?.config.key;
+  const key = flag(args, "key") ?? process.env.KANBAN_KEY ?? linked?.config.key;
   return withKey(ref, key);
 }
 
@@ -275,8 +275,7 @@ const commands: Record<string, Command> = {
   async init(args, rest) {
     const target = rest[0];
     if (!target) throw new CliError("Usage: kanban init <project-url>", 2);
-    const parsed = parseProjectRef(target, DEFAULT_ORIGIN);
-    const ref = withKey(parsed, flag(args, "key") ?? parsed.key);
+    const ref = withKey(parseProjectRef(target, DEFAULT_ORIGIN), flag(args, "key") ?? process.env.KANBAN_KEY);
     const board = await new Api(ref).board().catch((err: CliError) => {
       if (err instanceof KeyError) throw err;
       throw new CliError(`${err.message} Check the link, or create a project with \`kanban new <title>\`.`);

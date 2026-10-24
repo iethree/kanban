@@ -249,7 +249,7 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
       )}
 
       {keysOpen && (
-        <KeysDialog projectId={projectId} projectUrl={`${location.origin}${base}`} onClose={() => setKeysOpen(false)} onCopy={copy} />
+        <KeysDialog projectId={projectId} onClose={() => setKeysOpen(false)} onCopy={copy} />
       )}
 
       {toast && (

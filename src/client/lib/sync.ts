@@ -4,7 +4,7 @@ import { applyOp } from "../../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../../shared/types";
 import { KEY_CLOSE_CODE } from "../../shared/keys";
 import { newId } from "../../shared/validate";
-import { getKey, keyProblemOf, takeKeyFromHash } from "./keys";
+import { getKey } from "./keys";
 
 /** "locked": the project is protected and this browser's key is missing or no longer valid. */
 export type ConnectionStatus = "connecting" | "open" | "offline" | "locked";
@@ -64,6 +64,8 @@ export function useProject(projectId: string) {
     const handle = (msg: ServerMessage) => {
       switch (msg.t) {
         case "init":
+          // Only now is this browser in: a protected project waits for the key first.
+          setStatus("open");
           setKeyProblem(null);
           confirmed.current = msg.doc;
           setPeers(msg.peers);
@@ -90,22 +92,18 @@ export function useProject(projectId: string) {
       recompute();
     };
 
-    takeKeyFromHash(projectId);
-
     const connect = () => {
       clearTimeout(retryTimer);
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const key = getKey(projectId);
-      const query = key ? `?key=${encodeURIComponent(key)}` : "";
-      const ws = new WebSocket(`${proto}://${location.host}/api/p/${projectId}/ws${query}`);
+      const ws = new WebSocket(`${proto}://${location.host}/api/p/${projectId}/ws`);
       socket.current = ws;
       setStatus(retries === 0 ? "connecting" : "offline");
 
-      let opened = false;
       ws.onopen = () => {
-        opened = true;
+        // A protected project sends nothing until it has the key, which never goes in the URL.
+        ws.send(JSON.stringify({ t: "auth", key } satisfies ClientMessage));
         retries = 0;
-        setStatus("open");
         pingTimer = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send("ping"), 25_000);
       };
       ws.onmessage = (e) => {
@@ -123,12 +121,7 @@ export function useProject(projectId: string) {
         setKeyProblem(problem);
         setStatus("locked");
       };
-      const retryLater = () => {
-        setStatus("offline");
-        retryTimer = setTimeout(connect, Math.min(10_000, 400 * 2 ** retries++));
-      };
-
-      ws.onclose = async (e) => {
+      ws.onclose = (e) => {
         clearInterval(pingTimer);
         if (disposed || socket.current !== ws) return;
         // A key saved since this socket connected (e.g. the first key, just created here) may work.
@@ -137,14 +130,8 @@ export function useProject(projectId: string) {
           if (keyChanged) return reconnect.current();
           return lock(e.reason === "invalid" ? "invalid" : "required");
         }
-        // The server answers an upgrade without a valid key with a 401 that the browser hides;
-        // a failed first connection could be that, or just the network. Ask over HTTP.
-        if (!opened && !keyChanged) {
-          const problem = await keyProblemOf(projectId);
-          if (disposed || socket.current !== ws) return;
-          if (problem) return lock(problem);
-        }
-        retryLater();
+        setStatus("offline");
+        retryTimer = setTimeout(connect, Math.min(10_000, 400 * 2 ** retries++));
       };
     };
 
@@ -161,19 +148,14 @@ export function useProject(projectId: string) {
       socket.current?.close();
       connect();
     };
-    // A link with a key pasted into the address bar of an open project only changes the hash.
-    const onHash = () => takeKeyFromHash(projectId) && reconnect.current();
-
     connect();
     window.addEventListener("online", wake);
-    window.addEventListener("hashchange", onHash);
     document.addEventListener("visibilitychange", wake);
     return () => {
       disposed = true;
       clearTimeout(retryTimer);
       clearInterval(pingTimer);
       window.removeEventListener("online", wake);
-      window.removeEventListener("hashchange", onHash);
       document.removeEventListener("visibilitychange", wake);
       socket.current?.close();
       socket.current = null;
