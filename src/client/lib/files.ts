@@ -1,5 +1,6 @@
 import type { Doc } from "../../shared/types";
 import { exportDoc, importDoc } from "../../shared/validate";
+import { apiFetch } from "./keys";
 
 export function downloadProject(doc: Doc) {
   const slug = doc.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
@@ -35,7 +36,7 @@ export function pickJsonFile(): Promise<{ name: string; data: unknown } | null> 
 /** Validates locally (for a fast, friendly error) then uploads to the project. */
 export async function uploadProject(projectId: string, data: unknown): Promise<Doc> {
   const doc = importDoc(data);
-  const res = await fetch(`/api/p/${projectId}/import`, {
+  const res = await apiFetch(projectId, "/import", {
     method: "POST",
     // Marks this import as the user's in the activity feed (other HTTP callers count as agents).
     headers: { "Content-Type": "application/json", "X-Kanban-Actor": "user" },

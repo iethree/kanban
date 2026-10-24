@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActivityEntry } from "../../shared/activity";
 import { applyOp } from "../../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../../shared/types";
+import { KEY_CLOSE_CODE } from "../../shared/keys";
 import { newId } from "../../shared/validate";
+import { getKey, keyProblemOf, takeKeyFromHash } from "./keys";
 
-export type ConnectionStatus = "connecting" | "open" | "offline";
+/** "locked": the project is protected and this browser's key is missing or no longer valid. */
+export type ConnectionStatus = "connecting" | "open" | "offline" | "locked";
 
 interface Pending {
   opId: string;
@@ -25,11 +28,14 @@ export function useProject(projectId: string) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [peers, setPeers] = useState(1);
   const [pendingCount, setPendingCount] = useState(0);
+  /** Why the server refused this browser's key, while `status` is "locked". */
+  const [keyProblem, setKeyProblem] = useState<"required" | "invalid" | null>(null);
 
   const confirmed = useRef<Doc | null>(null);
   const pending = useRef<Pending[]>([]);
   const socket = useRef<WebSocket | null>(null);
   const activityListeners = useRef(new Set<(entries: ActivityEntry[]) => void>());
+  const reconnect = useRef<() => void>(() => {});
 
   const recompute = useCallback(() => {
     let next = confirmed.current;
@@ -58,6 +64,7 @@ export function useProject(projectId: string) {
     const handle = (msg: ServerMessage) => {
       switch (msg.t) {
         case "init":
+          setKeyProblem(null);
           confirmed.current = msg.doc;
           setPeers(msg.peers);
           // Ops are idempotent, so resending anything unacknowledged is safe.
@@ -83,14 +90,20 @@ export function useProject(projectId: string) {
       recompute();
     };
 
+    takeKeyFromHash(projectId);
+
     const connect = () => {
       clearTimeout(retryTimer);
       const proto = location.protocol === "https:" ? "wss" : "ws";
-      const ws = new WebSocket(`${proto}://${location.host}/api/p/${projectId}/ws`);
+      const key = getKey(projectId);
+      const query = key ? `?key=${encodeURIComponent(key)}` : "";
+      const ws = new WebSocket(`${proto}://${location.host}/api/p/${projectId}/ws${query}`);
       socket.current = ws;
       setStatus(retries === 0 ? "connecting" : "offline");
 
+      let opened = false;
       ws.onopen = () => {
+        opened = true;
         retries = 0;
         setStatus("open");
         pingTimer = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send("ping"), 25_000);
@@ -103,11 +116,35 @@ export function useProject(projectId: string) {
           console.error("Bad message from server", err);
         }
       };
-      ws.onclose = () => {
-        clearInterval(pingTimer);
-        if (disposed || socket.current !== ws) return;
+      const lock = (problem: "required" | "invalid") => {
+        // Retrying won't help: wait for a key. Don't keep showing a board this browser can't access.
+        confirmed.current = null;
+        setDoc(null);
+        setKeyProblem(problem);
+        setStatus("locked");
+      };
+      const retryLater = () => {
         setStatus("offline");
         retryTimer = setTimeout(connect, Math.min(10_000, 400 * 2 ** retries++));
+      };
+
+      ws.onclose = async (e) => {
+        clearInterval(pingTimer);
+        if (disposed || socket.current !== ws) return;
+        // A key saved since this socket connected (e.g. the first key, just created here) may work.
+        const keyChanged = getKey(projectId) !== key;
+        if (e.code === KEY_CLOSE_CODE) {
+          if (keyChanged) return reconnect.current();
+          return lock(e.reason === "invalid" ? "invalid" : "required");
+        }
+        // The server answers an upgrade without a valid key with a 401 that the browser hides;
+        // a failed first connection could be that, or just the network. Ask over HTTP.
+        if (!opened && !keyChanged) {
+          const problem = await keyProblemOf(projectId);
+          if (disposed || socket.current !== ws) return;
+          if (problem) return lock(problem);
+        }
+        retryLater();
       };
     };
 
@@ -119,14 +156,24 @@ export function useProject(projectId: string) {
       }
     };
 
+    reconnect.current = () => {
+      retries = 0;
+      socket.current?.close();
+      connect();
+    };
+    // A link with a key pasted into the address bar of an open project only changes the hash.
+    const onHash = () => takeKeyFromHash(projectId) && reconnect.current();
+
     connect();
     window.addEventListener("online", wake);
+    window.addEventListener("hashchange", onHash);
     document.addEventListener("visibilitychange", wake);
     return () => {
       disposed = true;
       clearTimeout(retryTimer);
       clearInterval(pingTimer);
       window.removeEventListener("online", wake);
+      window.removeEventListener("hashchange", onHash);
       document.removeEventListener("visibilitychange", wake);
       socket.current?.close();
       socket.current = null;
@@ -151,5 +198,8 @@ export function useProject(projectId: string) {
     };
   }, []);
 
-  return { doc, status, peers, pendingCount, dispatch, subscribeActivity };
+  /** Connects again, e.g. after the user enters a key. */
+  const retry = useCallback(() => reconnect.current(), []);
+
+  return { doc, status, peers, pendingCount, keyProblem, retry, dispatch, subscribeActivity };
 }

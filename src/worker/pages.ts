@@ -71,7 +71,7 @@ ${focus.length ? `<ul>${focus.map((i) => `<li>${i}</li>`).join("")}</ul>\n` : ""
 <p>Set ${code("KANBAN_AGENT")} (or pass ${code("--as NAME")}) so your claims and notes carry your name.</p>
 <h2>Over HTTP</h2>
 <ul>${http.map((i) => `<li>${i}</li>`).join("")}</ul>
-<p>Only the id at the end of the URL identifies the project; the name before it is cosmetic. No authentication is needed.</p>
+<p>Only the id at the end of the URL identifies the project; the name before it is cosmetic. If the project is protected, you also need one of its keys: pass ${code("--key <key>")} to the CLI (or set ${code("KANBAN_KEY")}), or send an ${code("X-Kanban-Key")} header over HTTP.</p>
 </section>`;
 }
 

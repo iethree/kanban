@@ -4,14 +4,14 @@ import { toShortId } from "../shared/ids";
 import { projectPath } from "../shared/urls";
 
 /** The "use the CLI" section, shown before the raw HTTP API in both llms.txt files. */
-function cliSection(origin: string, projectUrl?: string): string {
+function cliSection(origin: string, projectUrl?: string, isProtected = false): string {
   return `## Quickest path: the \`kanban\` CLI
 
 If you can run shell commands, use the CLI instead of hand-writing HTTP requests. It needs Node 18+ or Bun.
 
 \`\`\`sh
 curl -fsSL ${origin}/install | sh
-${projectUrl ? `kanban init ${projectUrl}` : `kanban new "Project title"     # or: kanban init <project-url>`}
+${projectUrl ? `kanban init ${projectUrl}${isProtected ? " --key <key>" : ""}` : `kanban new "Project title"     # or: kanban init <project-url>`}
 kanban board                     # columns and cards: #12 title [priority, size] @assignee
 kanban next                      # the highest-priority unclaimed card in "Todo"
 kanban start 12                  # claim it and move it to In progress
@@ -29,16 +29,22 @@ const MAX_LISTED_CARDS = 150;
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
+/** The curl option that sends a protected project's key, taken from $KANBAN_KEY. */
+const keyOption = (isProtected: boolean) => (isProtected ? ` -H "X-Kanban-Key: $KANBAN_KEY"` : "");
+
 /** A copy-pasteable curl command posting the given ops, single-quoted for the shell. */
-function curlOps(base: string, ops: unknown[]): string {
+function curlOps(base: string, ops: unknown[], isProtected = false): string {
   const body = JSON.stringify({ ops }).replace(/'/g, `'\\''`);
-  return `curl -s -X POST ${base}/ops -H 'Content-Type: application/json' \\\n  -d '${body}'`;
+  return `curl -s -X POST ${base}/ops -H 'Content-Type: application/json'${keyOption(isProtected)} \\\n  -d '${body}'`;
 }
 
 function apiReference(base: string): string {
   return `## API
 
-No authentication: the project URL is the credential. Send JSON with \`Content-Type: application/json\`.
+The project URL is the credential. A project can also be **protected with keys**: then every request needs
+one, in an \`X-Kanban-Key: <key>\` header (or \`Authorization: Bearer <key>\`), and a request without a valid key
+gets status 401 with \`"code": "key_required"\` or \`"key_invalid"\`. Keys are 16 letters and digits; ask the
+human for one. Send JSON with \`Content-Type: application/json\`.
 
 | Method | Path | What it does |
 | --- | --- | --- |
@@ -48,6 +54,9 @@ No authentication: the project URL is the credential. Send JSON with \`Content-T
 | GET | \`${base}/documents/<documentId>\` | One document as raw Markdown, with its title and timestamps as front matter. |
 | POST | \`${base}/ops\` | Apply edits. Body: \`{"ops": [op, ...]}\` (max 100). Applied in order and shown live to anyone viewing the board. |
 | POST | \`${base}/import\` | Replace the **entire** project with an export file. Destructive — only if a human asks. |
+| GET | \`${base}/keys\` | The project's keys: \`{"keys": [{"id", "hint", "createdAt", "current"}]}\`. \`hint\` is the key's first 4 characters; \`current\` marks the key you sent. |
+| POST | \`${base}/keys\` | Create a key. Returns \`{"key", "id", "hint", "createdAt"}\`; the key is never shown again. The first key protects the project, so keep it. Only if a human asks. |
+| DELETE | \`${base}/keys/<id>\` | Revoke a key. You can't revoke the key you're using. Only if a human asks. |
 
 \`POST /ops\` validates every op before applying any. On success it returns
 \`{"ok": true, "version": n, "url": "<project page>", "results": [{"type", "id", "number", "changed"}]}\`, where \`id\` is the id of
@@ -202,7 +211,7 @@ function cardLine(card: Card): string {
   return `- **#${card.number}** ${oneLine(card.title) || "(untitled)"} _(${meta})_`;
 }
 
-export function projectLlmsTxt(doc: Doc, origin: string, projectId: string): string {
+export function projectLlmsTxt(doc: Doc, origin: string, projectId: string, isProtected = false): string {
   const shortId = toShortId(projectId);
   const base = `${origin}/api/p/${shortId}`;
   const pageUrl = doc.initialized ? `${origin}${projectPath(projectId, doc.title)}` : `${origin}/p/${shortId}`;
@@ -246,14 +255,18 @@ ${WORKING_AGREEMENT}
 
   return `# ${oneLine(doc.title) || "Untitled project"}
 
-> Kanban project at ${pageUrl}. Anyone with that link can view and edit; humans may be watching live.${
+> Kanban project at ${pageUrl}. ${
+    isProtected
+      ? "It is protected: send your key with every request (`--key` or `KANBAN_KEY` for the CLI; the `X-Kanban-Key` header over HTTP; the commands below read it from `$KANBAN_KEY`)."
+      : "Anyone with that link can view and edit."
+  } Humans may be watching live.${
     doc.description ? `\n>\n> ${doc.description.trim().split("\n").join("\n> ")}` : ""
   }
 
 This file is a snapshot taken ${new Date().toISOString()}. Re-fetch \`${base}/llms.txt\` (or GET \`${base}\` for
 full JSON including card descriptions and document bodies) before making decisions.
 
-${cliSection(origin, pageUrl)}
+${cliSection(origin, pageUrl, isProtected)}
 
 ## Board
 
@@ -265,27 +278,27 @@ ${board}
 
 ${documents || "_(none yet)_"}
 
-Card descriptions are in the JSON (\`curl -s ${base}\`, look the card up by id). Fetch a document's Markdown with
-\`curl -s ${base}/documents/<documentId>\`.
+Card descriptions are in the JSON (\`curl -s${keyOption(isProtected)} ${base}\`, look the card up by id). Fetch a document's Markdown with
+\`curl -s${keyOption(isProtected)} ${base}/documents/<documentId>\`.
 
 ## Quick start
 
 \`\`\`sh
 # Read everything
-curl -s ${base}
+curl -s${keyOption(isProtected)} ${base}
 
 # Add a card${first ? ` to "${oneLine(first.name)}"` : ""}
-${curlOps(base, [{ type: "addCard", column: first?.name ?? "Backlog", card: { title: "New task", priority: "medium", size: "s" } }])}
+${curlOps(base, [{ type: "addCard", column: first?.name ?? "Backlog", card: { title: "New task", priority: "medium", size: "s" } }], isProtected)}
 ${
   exampleCard && middle
     ? `
 # Start a card: move it to the top of "${oneLine(middle.name)}"
-${curlOps(base, [{ type: "moveCard", id: exampleCard.id, column: middle.name, index: 0 }])}
+${curlOps(base, [{ type: "moveCard", id: exampleCard.id, column: middle.name, index: 0 }], isProtected)}
 `
     : ""
 }
 # Write a document
-${curlOps(base, [{ type: "addDocument", document: { title: "Notes", body: "# Notes\n" } }])}
+${curlOps(base, [{ type: "addDocument", document: { title: "Notes", body: "# Notes\n" } }], isProtected)}
 \`\`\`
 
 ${apiReference(base)}

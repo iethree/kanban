@@ -45,7 +45,25 @@ the board, so don't commit it to a public repository.
 { "project": "https://kanban.infopanel.org/p/website-relaunch/<id>", "agent": "claude" }
 ```
 
-`agent` is optional; it names you on claims and progress notes.
+`agent` is optional; it names you on claims and progress notes. `key` holds the key of a protected
+project (see below).
+
+### Protected projects
+
+A project link alone can leak, e.g. when it's shared with the wrong person by accident. To guard
+against that, protect the project with **keys**: choose **Keys…** in the project menu, or run
+`kanban keys add`. When a project has at least one key, every read and edit needs the link *and*
+a key. People don't choose keys: a key is 16 random letters and digits, and the server keeps only
+its hash.
+
+- The first key protects the project. The browser or `.kanban` that created it starts to use it at once.
+- Create as many keys as you like, and revoke any of them at any time, except the one you are using.
+  When a key is revoked, browsers that use it are disconnected and asked for another key.
+- Browsers keep their key in `localStorage`. A link that ends in `#key=<key>` (**Copy link with key**)
+  saves the key and opens the project. The part after `#` is never sent to the server.
+- The CLI reads the key from `--key`, `KANBAN_KEY`, a `#key=` link, or the `key` field in `.kanban`.
+  `kanban init <project-url> --key <key>` saves it there.
+- Over HTTP, send an `X-Kanban-Key: <key>` header (or `Authorization: Bearer <key>`).
 
 ### Typical loop
 
@@ -68,7 +86,7 @@ and a unique prefix is enough. Any text argument can be `-` to read from stdin.
 | Command | What it does |
 | --- | --- |
 | `kanban new <title> [--columns "A,B,C"] [--description TEXT]` | Create a project and link this directory |
-| `kanban init <project-url>` | Link this directory to an existing project |
+| `kanban init <project-url> [--key K]` | Link this directory to an existing project, and save its key if it has one |
 | `kanban url` | Print the project's web address, to share with a human |
 | `kanban board` | Columns and cards: `#12 title [priority, size] @assignee` |
 | `kanban show <card>` | One card, including its description |
@@ -86,6 +104,9 @@ and a unique prefix is enough. Any text argument can be `-` to read from stdin.
 | `kanban doc <title\|id>` | Print a document's Markdown |
 | `kanban doc write <title> [file\|-]` | Create or replace a document |
 | `kanban doc append <title> <text\|->` | Append to a document (creates it if missing) |
+| `kanban keys` | List the project's keys |
+| `kanban keys add` | Create a key. The first one protects the project and is saved in `.kanban` |
+| `kanban keys revoke <id\|first characters>` | Revoke a key (not the one you're using) |
 | `kanban install-skill [--local] [--print]` | Add the `/kanban next` skill to Claude Code (see below) |
 | `kanban upgrade` | Update the CLI to the latest version now |
 
@@ -102,6 +123,7 @@ Todo, In progress and Done.
 | `--json` | Machine-readable output for `board`, `show`, `next`, `docs` and `doc` |
 | `--as NAME` / `KANBAN_AGENT` | Your name for claims and notes (default: `agent` in `.kanban`, then your username) |
 | `--project REF` / `KANBAN_PROJECT` | Project URL or id, overriding `.kanban` |
+| `--key KEY` / `KANBAN_KEY` | Key for a protected project, overriding `.kanban` |
 | `KANBAN_ORIGIN` | Server to use when a project is given as a bare id, or for `kanban new` |
 | `--no-color` / `--color` | Turn color off or on. By default it's used only when output goes to a terminal, so agents and pipes get plain text. `NO_COLOR` and `FORCE_COLOR` are respected too. |
 | `KANBAN_NO_UPDATE` | Set to `1` to stop the daily update check |
@@ -150,6 +172,13 @@ Agents without a shell can use the API directly. `/llms.txt` explains the app an
 | GET | `/api/p/<id>/documents/<docId>` | One document as Markdown with front matter |
 | POST | `/api/p/<id>/ops` | `{"ops": [...]}`: batch edits, validated together, broadcast live |
 | POST | `/api/p/<id>/import` | Replace the whole project with an export file |
+| GET | `/api/p/<id>/keys` | The project's keys: id, first 4 characters, creation time, and whether it's the key you sent |
+| POST | `/api/p/<id>/keys` | Create a key; the response is the only time it's shown |
+| DELETE | `/api/p/<id>/keys/<keyId>` | Revoke a key (not the one you're using) |
+
+On a protected project every route above needs a key. Without a valid one, the API answers 401 with
+`"code": "key_required"` or `"key_invalid"`. The WebSocket takes the key as `?key=`, because browsers
+can't set headers on it.
 
 Card ops accept a card number (`12` or `"#12"`) as the `id`, and `column` names instead of ids.
 `claimCard` returns 409 if someone else holds the card, and `appendToCard` / `appendToDocument` add text
@@ -195,7 +224,8 @@ Deploys to https://kanban.infopanel.org as a Workers custom domain (see `routes`
   Everything else is served from static assets with SPA fallback.
 - **`src/worker/project-room.ts`**: one Durable Object per project. Stores the project in SQLite
   (metadata in one row, one row per card and per document), relays edits over hibernatable WebSockets,
-  and serves the HTTP API.
+  and serves the HTTP API. Key hashes live in their own table, outside the document that's synced to
+  browsers, and every request is checked against them.
 - **`src/worker/llms.ts`**, **`pages.ts`**, **`cli.ts`**: the `llms.txt` files, page markup for agents,
   and serving the CLI.
 - **`src/shared/reducer.ts`**: a pure, deterministic `applyOp(doc, op)` that the server and the

@@ -7,8 +7,15 @@ import { agentLinks, prefersMarkdown, rewriteHomePage, rewriteProjectPage } from
 
 export { ProjectRoom } from "./project-room";
 
-const ROUTE = /^\/api\/p\/([^/]+)(?:\/(ws|export|import|ops|activity|llms\.txt|documents\/[A-Za-z0-9_-]{1,64}))?\/?$/;
-const POST_ONLY = new Set(["import", "ops"]);
+const ROUTE = /^\/api\/p\/([^/]+)(?:\/(ws|export|import|ops|activity|keys|llms\.txt|(?:documents|keys)\/[A-Za-z0-9_-]{1,64}))?\/?$/;
+
+/** The methods each API action accepts; anything not listed is GET-only (HEAD included). */
+function allowedMethods(action: string): string[] {
+  if (action === "import" || action === "ops") return ["POST"];
+  if (action === "keys") return ["GET", "HEAD", "POST"];
+  if (action.startsWith("keys/")) return ["DELETE"];
+  return ["GET", "HEAD"];
+}
 
 /**
  * Project links are the only key to a project, so pages and API responses for
@@ -73,9 +80,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (action === "ws" && request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected WebSocket upgrade", { status: 426 });
     }
-    const expected = POST_ONLY.has(action) ? "POST" : "GET";
-    if (request.method !== expected && !(expected === "GET" && request.method === "HEAD")) {
-      return Response.json({ error: `Use ${expected}` }, { status: 405, headers: { Allow: expected } });
+    const allowed = allowedMethods(action);
+    if (!allowed.includes(request.method)) {
+      const allow = allowed.filter((m) => m !== "HEAD").join(", ");
+      return Response.json({ error: `Use ${allow}` }, { status: 405, headers: { Allow: allow } });
     }
     const stub = env.PROJECTS.get(env.PROJECTS.idFromName(id));
     // Normalise the path so the Durable Object always sees /api/p/<uuid>/<action>.

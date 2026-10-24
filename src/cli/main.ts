@@ -11,6 +11,7 @@ import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { toShortId } from "../shared/ids";
 import { CLI_VERSION } from "../shared/cli-version";
+import { KEY_HEADER, KEY_RE, type KeyInfo } from "../shared/keys";
 import { DEFAULT_COLUMNS, LIMITS } from "../shared/types";
 import type { ActivityEntry } from "../shared/activity";
 import type { ExportedProject } from "../shared/validate";
@@ -34,6 +35,7 @@ import {
   parseProjectRef,
   parseSize,
   progressColumn,
+  timestamp,
   todoColumn,
   type Args,
   type ProjectRef,
@@ -55,6 +57,8 @@ const DEFAULT_ORIGIN =
 interface Config {
   project: string;
   agent?: string;
+  /** Key for a protected project. */
+  key?: string;
 }
 
 interface OpsResult {
@@ -79,21 +83,34 @@ function findConfig(start = process.cwd()): { path: string; config: Config } | n
   }
 }
 
-function writeConfig(config: Config): string {
-  const path = join(process.cwd(), CONFIG_FILE);
+function writeConfig(config: Config, path = join(process.cwd(), CONFIG_FILE)): string {
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
   return path;
 }
 
+/** The .kanban file `projectFor` would use, unless the project is given by flag or environment. */
+function linkedConfig(args: Args) {
+  return flag(args, "project") ?? process.env.KANBAN_PROJECT ? null : findConfig();
+}
+
 function projectFor(args: Args): ProjectRef {
-  const ref = flag(args, "project") ?? process.env.KANBAN_PROJECT ?? findConfig()?.config.project;
-  if (!ref) {
+  const linked = linkedConfig(args);
+  const value = flag(args, "project") ?? process.env.KANBAN_PROJECT ?? linked?.config.project;
+  if (!value) {
     throw new CliError(
       "No project linked here. Run `kanban init <project-url>` to link an existing project, or `kanban new <title>` to create one.",
       2,
     );
   }
-  return parseProjectRef(ref, DEFAULT_ORIGIN);
+  const ref = parseProjectRef(value, DEFAULT_ORIGIN);
+  const key = flag(args, "key") ?? process.env.KANBAN_KEY ?? ref.key ?? linked?.config.key;
+  return withKey(ref, key);
+}
+
+function withKey(ref: ProjectRef, key: string | undefined): ProjectRef {
+  if (!key) return ref;
+  if (!KEY_RE.test(key)) throw new CliError(`"${key}" isn't a project key. Keys are 16 letters and digits.`, 2);
+  return { ...ref, key };
 }
 
 function agentName(args: Args): string {
@@ -155,6 +172,9 @@ const json = (value: unknown) => out(JSON.stringify(value, null, 2));
 
 // -- API ----------------------------------------------------------------------
 
+/** The project needs a key, or the one given doesn't work. */
+class KeyError extends CliError {}
+
 class Api {
   constructor(readonly ref: ProjectRef) {}
 
@@ -163,7 +183,11 @@ class Api {
     try {
       res = await fetch(`${this.ref.origin}/api/p/${this.ref.id}${path}`, {
         ...init,
-        headers: { "User-Agent": `kanban-cli/${VERSION}`, ...init?.headers },
+        headers: {
+          "User-Agent": `kanban-cli/${VERSION}`,
+          ...(this.ref.key ? { [KEY_HEADER]: this.ref.key } : {}),
+          ...init?.headers,
+        },
       });
     } catch (err) {
       throw new CliError(`Couldn't reach ${this.ref.origin}: ${err instanceof Error ? err.message : err}`);
@@ -174,6 +198,17 @@ class Api {
       body = JSON.parse(text);
     } catch {}
     if (!res.ok) {
+      const code = (body as { code?: string })?.code;
+      if (code === "key_required") {
+        throw new KeyError(
+          "This project is protected by a key. Link it with `kanban init <project-url> --key <key>`, or set KANBAN_KEY.",
+        );
+      }
+      if (code === "key_invalid") {
+        throw new KeyError(
+          "The key for this project doesn't work. It may have been revoked. Get a new key, then run `kanban init <project-url> --key <key>`.",
+        );
+      }
       const message = (body as { error?: string })?.error ?? `HTTP ${res.status}`;
       throw new CliError(message, res.status === 409 ? 3 : 1);
     }
@@ -184,6 +219,12 @@ class Api {
 
   activity = (limit: number) =>
     this.request<{ entries: ActivityEntry[]; more: boolean }>(`/activity?limit=${limit}`);
+
+  keys = () => this.request<{ keys: KeyInfo[] }>("/keys").then((b) => b.keys);
+
+  addKey = () => this.request<Omit<KeyInfo, "current"> & { key: string }>("/keys", { method: "POST" });
+
+  revokeKey = (id: string) => this.request<{ ok: true }>(`/keys/${id}`, { method: "DELETE" });
 
   ops = (ops: unknown[]) =>
     this.request<OpsResult>("/ops", {
@@ -234,16 +275,24 @@ const commands: Record<string, Command> = {
   async init(args, rest) {
     const target = rest[0];
     if (!target) throw new CliError("Usage: kanban init <project-url>", 2);
-    const ref = parseProjectRef(target, DEFAULT_ORIGIN);
+    const parsed = parseProjectRef(target, DEFAULT_ORIGIN);
+    const ref = withKey(parsed, flag(args, "key") ?? parsed.key);
     const board = await new Api(ref).board().catch((err: CliError) => {
+      if (err instanceof KeyError) throw err;
       throw new CliError(`${err.message} Check the link, or create a project with \`kanban new <title>\`.`);
     });
     const url = pageUrl(ref, board.project.title);
     const agent = flag(args, "as");
-    const path = writeConfig({ project: url, ...(agent ? { agent } : {}) });
+    const path = writeConfig({ project: url, ...(agent ? { agent } : {}), ...(ref.key ? { key: ref.key } : {}) });
     out(success(st, `Linked ${st.dim(path)} to ${st.bold(board.project.title)}`));
     out(link(st, url));
-    out(st.dim("Anyone with this link can view and edit the board; don't commit .kanban to a public repository."));
+    out(
+      st.dim(
+        ref.key
+          ? "The link and key in .kanban let anyone edit the board; don't commit .kanban to a public repository."
+          : "Anyone with this link can view and edit the board; don't commit .kanban to a public repository.",
+      ),
+    );
   },
 
   async url(args) {
@@ -425,6 +474,58 @@ const commands: Record<string, Command> = {
     if (!doc) throw new CliError(`No document "${rest.join(" ")}". Run \`kanban docs\` to list them.`);
     if (args.flags.json) return json(doc);
     out(doc.body || st.dim("(empty document)"));
+  },
+
+  async keys(args, rest) {
+    const [sub = "list", target] = rest;
+    const ref = projectFor(args);
+    const api = new Api(ref);
+
+    if (sub === "list") {
+      const keys = await api.keys();
+      if (args.flags.json) return json(keys);
+      if (!keys.length) {
+        return out(`No keys: anyone with the link can open this project. Protect it with ${st.cyan("kanban keys add")}.`);
+      }
+      out(
+        keys
+          .map((k) => `${st.dim(k.id)}  ${k.hint}…  ${st.dim(`created ${timestamp(k.createdAt)}`)}${k.current ? `  ${st.green("(yours)")}` : ""}`)
+          .join("\n"),
+      );
+      return;
+    }
+
+    if (sub === "add") {
+      const first = (await api.keys()).length === 0;
+      const created = await api.addKey();
+      if (args.flags.json) return json(created);
+      out(created.key);
+      // The first key locks the project, so keep it where later commands will find it.
+      const linked = linkedConfig(args);
+      if (first && linked) {
+        writeConfig({ ...linked.config, key: created.key }, linked.path);
+        out(st.dim(`The project now needs a key. This one is saved in ${linked.path}.`));
+      } else if (first) {
+        out(st.dim("The project now needs a key. Save this one: pass it with --key or KANBAN_KEY."));
+      } else {
+        out(st.dim("Give this key to whoever needs access. It can't be shown again."));
+      }
+      return;
+    }
+
+    if (sub === "revoke") {
+      if (!target) throw new CliError("Usage: kanban keys revoke <id|first characters>", 2);
+      const keys = await api.keys();
+      const matches = keys.filter((k) => k.id === target || k.hint.startsWith(target) || target.startsWith(k.hint));
+      if (matches.length !== 1) {
+        throw new CliError(matches.length ? `"${target}" matches more than one key. Use the id from \`kanban keys\`.` : `No key "${target}". Run \`kanban keys\` to list them.`, 2);
+      }
+      if (matches[0]!.current) throw new CliError("You can't revoke the key you're using. Use another key to revoke this one.");
+      await api.revokeKey(matches[0]!.id);
+      return out(success(st, `Revoked the key ${matches[0]!.hint}…`));
+    }
+
+    throw new CliError("Usage: kanban keys [list|add|revoke <id>]", 2);
   },
 
   async "install-skill"(args) {

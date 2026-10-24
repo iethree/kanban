@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Download, Ellipsis, Link2, Upload } from "lucide-react";
+import { Bot, Download, Ellipsis, KeyRound, Link2, Upload } from "lucide-react";
 import { PROJECT_COLORS, faviconUrl, projectColor } from "../../shared/colors";
 import { LIMITS } from "../../shared/types";
 import { toShortId } from "../../shared/ids";
 import { projectPath, type ProjectRoute } from "../../shared/urls";
 import { downloadProject, pickJsonFile, uploadProject } from "../lib/files";
+import { getKey } from "../lib/keys";
 import { rememberProject } from "../lib/recent";
 import { navigate, useSearchParam } from "../lib/router";
 import { useProject, type ConnectionStatus } from "../lib/sync";
 import { BoardSkeleton, BoardView } from "./BoardView";
 import { ActivityView } from "./ActivityView";
 import { CardModal } from "./CardModal";
+import { KeyPrompt, KeysDialog } from "./Keys";
 import { DocumentsView } from "./Documents";
 import { ListView } from "./ListView";
 import { SetupDialog } from "./SetupDialog";
@@ -20,8 +22,9 @@ import { EditableText, Logo, Menu, MenuItem, MenuSeparator, MenuSwatches, ThemeT
 export type ProjectView = ProjectRoute["view"];
 
 export function ProjectPage({ projectId, view }: { projectId: string; view: ProjectView }) {
-  const { doc, status, peers, pendingCount, dispatch, subscribeActivity } = useProject(projectId);
+  const { doc, status, peers, pendingCount, keyProblem, retry, dispatch, subscribeActivity } = useProject(projectId);
   const [openCardId, setOpenCardId] = useSearchParam("card");
+  const [keysOpen, setKeysOpen] = useState(false);
   const [toast, showToast] = useToast();
   // Until the project loads we don't know its name, so links fall back to the generic slug.
   const base = projectPath(projectId, doc?.title ?? "");
@@ -60,22 +63,31 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
     }
   };
 
-  const copyLink = () => copy(`${location.origin}${base}`, "Link copied — anyone with it can edit this project.");
+  // A browser only has a key for a project that's protected.
+  const copyLink = () =>
+    copy(
+      `${location.origin}${base}`,
+      getKey(projectId) ? "Link copied. People also need a key to open it." : "Link copied — anyone with it can edit this project.",
+    );
 
-  const copyAgentInstructions = () =>
+  const copyAgentInstructions = () => {
+    const key = getKey(projectId);
     copy(
       [
         `Plan and track your work on the kanban board at ${location.origin}${base}`,
         "",
         `If you can run shell commands, install the CLI and link this project:`,
         `  curl -fsSL ${location.origin}/install | sh`,
-        `  kanban init ${location.origin}${base}`,
+        `  kanban init ${location.origin}${base}${key ? ` --key ${key}` : ""}`,
         "Then use `kanban next`, `kanban start <n>`, `kanban log <n> \"...\"` and `kanban done <n> \"...\"` (see `kanban help`).",
         "",
-        `Otherwise, fetch ${location.origin}/api/p/${toShortId(projectId)}/llms.txt: it describes the board and the HTTP API.`,
+        `Otherwise, fetch ${location.origin}/api/p/${toShortId(projectId)}/llms.txt${key ? ` with the header "X-Kanban-Key: ${key}"` : ""}: it describes the board and the HTTP API.`,
       ].join("\n"),
-      "Agent instructions copied. They include the project link, which lets anyone edit it: don't commit them to a public repo.",
+      key
+        ? "Agent instructions copied. They include the project link and key, which let anyone edit it: don't commit them to a public repo."
+        : "Agent instructions copied. They include the project link, which lets anyone edit it: don't commit them to a public repo.",
     );
+  };
 
   const importFile = async () => {
     try {
@@ -113,7 +125,7 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
           <span>Kanban</span>
         </a>
         <span className="crumb-sep">/</span>
-        <span className="crumb">{doc?.initialized ? doc.title || "Untitled project" : "New project"}</span>
+        <span className="crumb">{doc?.initialized ? doc.title || "Untitled project" : status === "locked" ? "Protected project" : "New project"}</span>
 
         <div className="topbar-actions">
           <SyncStatus status={status} peers={peers} pending={pendingCount} />
@@ -151,11 +163,16 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
             <MenuItem icon={<Bot size={14} />} disabled={!doc?.initialized} onSelect={copyAgentInstructions}>
               Copy agent instructions
             </MenuItem>
+            <MenuItem icon={<KeyRound size={14} />} disabled={!doc?.initialized} onSelect={() => setKeysOpen(true)}>
+              Keys…
+            </MenuItem>
           </Menu>
         </div>
       </header>
 
-      {!doc ? (
+      {status === "locked" ? (
+        <KeyPrompt projectId={projectId} problem={keyProblem} onKey={retry} />
+      ) : !doc ? (
         <BoardSkeleton />
       ) : !doc.initialized ? (
         <>
@@ -231,6 +248,10 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
         />
       )}
 
+      {keysOpen && (
+        <KeysDialog projectId={projectId} projectUrl={`${location.origin}${base}`} onClose={() => setKeysOpen(false)} onCopy={copy} />
+      )}
+
       {toast && (
         <div className="toast" role="status">
           {toast}
@@ -261,7 +282,11 @@ function SyncStatus({ status, peers, pending }: { status: ConnectionStatus; peer
   let tone = "live";
   let label = peers > 1 ? `${peers} online` : "Live";
   let title = peers > 1 ? `${peers} people have this project open` : "Connected. Changes sync in real time.";
-  if (status === "connecting") {
+  if (status === "locked") {
+    tone = "offline";
+    label = "Locked";
+    title = "This project needs a key";
+  } else if (status === "connecting") {
     tone = "pending";
     label = "Connecting…";
     title = "Connecting to the project";

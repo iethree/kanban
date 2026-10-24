@@ -3,6 +3,7 @@ import { Bot, Columns3, FileText, FolderPlus, MessageSquareText, Pencil, Trash2,
 import type { ActivityEntry, Actor, CardRef, ColumnRef } from "../../shared/activity";
 import { FALLBACK_ICON, columnIcon, matchColumnIcon } from "../../shared/column-icons";
 import type { Doc } from "../../shared/types";
+import { apiFetch } from "../lib/keys";
 import { navigate } from "../lib/router";
 import { Markdown } from "./Markdown";
 import { PRIORITY_LABEL, StatusIcon, timeAgo } from "./ui";
@@ -30,7 +31,7 @@ export function useActivity(projectId: string, subscribe: SubscribeActivity, pag
     setError(null);
     try {
       const query = new URLSearchParams({ limit: String(page), ...(before ? { before: String(before) } : {}) });
-      const res = await fetch(`/api/p/${projectId}/activity?${query}`);
+      const res = await apiFetch(projectId, `/activity?${query}`);
       if (!res.ok) throw new Error(`Couldn't load activity (${res.status}).`);
       const body = (await res.json()) as { entries: ActivityEntry[]; more: boolean };
       setEntries((current) => mergeEntries(current, body.entries));

@@ -80,9 +80,11 @@ export interface ProjectRef {
   origin: string;
   /** Short (base62) project id. */
   id: string;
+  /** Key for a protected project. */
+  key?: string;
 }
 
-/** Accepts a page URL, an API URL, a short id or a UUID. */
+/** Accepts a page URL (which may end in `#key=<key>`), an API URL, a short id or a UUID. */
 export function parseProjectRef(ref: string, defaultOrigin: string): ProjectRef {
   const value = ref.trim();
   if (/^https?:\/\//i.test(value)) {
@@ -90,7 +92,8 @@ export function parseProjectRef(ref: string, defaultOrigin: string): ProjectRef 
     const api = url.pathname.match(/^\/api\/p\/([^/]+)/);
     const uuid = api ? toProjectUuid(api[1]!) : parseProjectPath(url.pathname)?.id;
     if (!uuid) throw new CliError(`Couldn't find a project id in ${value}`, 2);
-    return { origin: url.origin, id: toShortId(uuid) };
+    const key = new URLSearchParams(url.hash.slice(1)).get("key");
+    return { origin: url.origin, id: toShortId(uuid), ...(key ? { key } : {}) };
   }
   const uuid = toProjectUuid(value);
   if (!uuid) throw new CliError(`"${value}" isn't a project URL or id`, 2);
@@ -313,7 +316,7 @@ function helpBody(origin: string): string {
     "",
     section("Setup", [
       ["kanban new <title> [--columns A,B,C]", "Create a project and link this directory"],
-      ["kanban init <project-url>", "Link this directory to an existing project"],
+      ["kanban init <project-url> [--key K]", "Link this directory to an existing project (and its key)"],
       ["kanban url", "Print the project's web address for humans"],
     ]),
     "",
@@ -343,6 +346,12 @@ function helpBody(origin: string): string {
       ["kanban doc append <title> <text|->", "Append to a document (creates it if missing)"],
     ]),
     "",
+    section("Keys (a protected project needs a key as well as its link)", [
+      ["kanban keys", "List the project's keys"],
+      ["kanban keys add", "Create a key. The first one protects the project and is saved in .kanban"],
+      ["kanban keys revoke <id|first characters>", "Revoke a key (not the one you're using)"],
+    ]),
+    "",
     section("Claude Code", [
       ["kanban install-skill [--local] [--print]", "Add /kanban next, which works through the Todo column"],
     ]),
@@ -360,6 +369,7 @@ function helpBody(origin: string): string {
     "  --as NAME        Who you are, for claims and log entries",
     '                   (default: $KANBAN_AGENT, "agent" in .kanban, then your username)',
     "  --project REF    Project URL or id (default: $KANBAN_PROJECT, then the nearest .kanban file)",
+    '  --key KEY        Key for a protected project (default: $KANBAN_KEY, then "key" in .kanban)',
     "  --no-color       Plain output (also: NO_COLOR=1). Color is only used in a terminal.",
     "  KANBAN_NO_UPDATE=1  Don't check for updates (also off when CI is set)",
     "",

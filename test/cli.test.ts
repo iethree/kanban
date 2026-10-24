@@ -58,6 +58,11 @@ describe("project references", () => {
       id: SHORT,
     });
     expect(() => parseProjectRef("https://k.example/p/nope", "x")).toThrow();
+    expect(parseProjectRef(`https://k.example/p/my-board/${SHORT}#key=AbCd1234EfGh5678`, "x")).toEqual({
+      origin: "https://k.example",
+      id: SHORT,
+      key: "AbCd1234EfGh5678",
+    });
   });
 });
 

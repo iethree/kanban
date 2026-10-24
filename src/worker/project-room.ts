@@ -4,6 +4,7 @@ import { randomProjectColor } from "../shared/colors";
 import { needsGuess } from "../shared/column-icons";
 import { applyOp, claimConflict, emptyDoc, normalizeDoc, resolveCardRef } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
+import { KEY_CLOSE_CODE, KEY_HEADER, KEY_RE, generateKey, hashKey, keyHint, type KeyInfo } from "../shared/keys";
 import { exportDoc, importDoc, newId, sanitizeOp } from "../shared/validate";
 import { projectPath } from "../shared/urls";
 import { guessColumnIcons } from "./icon-guess";
@@ -39,6 +40,9 @@ export class ProjectRoom extends DurableObject<Env> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS activity (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, data TEXT NOT NULL)`,
+    );
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS keys (id TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, hint TEXT NOT NULL, created_at INTEGER NOT NULL)`,
     );
     // Keepalive pings from clients are answered without waking the object.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
@@ -183,6 +187,71 @@ export class ProjectRoom extends DurableObject<Env> {
     this.ctx.waitUntil(work);
   }
 
+  // -- keys -----------------------------------------------------------------
+
+  private hasKeys(): boolean {
+    return this.sql.exec(`SELECT 1 FROM keys LIMIT 1`).toArray().length > 0;
+  }
+
+  /**
+   * Checks the request's key. Open projects (no keys) let everyone in with `keyId: null`;
+   * otherwise returns the matching key's id, or why access is refused.
+   */
+  private async authorize(request: Request, allowQuery: boolean): Promise<{ keyId: string | null } | { denied: "required" | "invalid" }> {
+    if (!this.hasKeys()) return { keyId: null };
+    const bearer = request.headers.get("Authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
+    const given = request.headers.get(KEY_HEADER) ?? bearer ?? (allowQuery ? new URL(request.url).searchParams.get("key") : null);
+    if (!given) return { denied: "required" };
+    if (!KEY_RE.test(given)) return { denied: "invalid" };
+    const row = this.sql.exec<{ id: string }>(`SELECT id FROM keys WHERE hash = ?`, await hashKey(given)).toArray()[0];
+    return row ? { keyId: row.id } : { denied: "invalid" };
+  }
+
+  private listKeys(currentId: string | null): KeyInfo[] {
+    return this.sql
+      .exec<{ id: string; hint: string; created_at: number }>(`SELECT id, hint, created_at FROM keys ORDER BY created_at`)
+      .toArray()
+      .map((r) => ({ id: r.id, hint: r.hint, createdAt: r.created_at, current: r.id === currentId }));
+  }
+
+  /** Disconnects browsers that no longer have access, so they ask for a key. */
+  private closeSockets(keep: (keyId: string | null) => boolean, reason: "required" | "invalid") {
+    for (const ws of this.ctx.getWebSockets()) {
+      const keyId = (ws.deserializeAttachment() as { keyId?: string | null } | null)?.keyId ?? null;
+      if (keep(keyId)) continue;
+      try {
+        ws.close(KEY_CLOSE_CODE, reason);
+      } catch {
+        // Already closing.
+      }
+    }
+  }
+
+  private async handleKeys(request: Request, keyId: string | null, itemId: string | undefined): Promise<Response> {
+    if (request.method === "GET" || request.method === "HEAD") return Response.json({ keys: this.listKeys(keyId) });
+
+    if (request.method === "POST") {
+      if (!this.load().initialized) return notFound();
+      const first = !this.hasKeys();
+      const key = generateKey();
+      const info = { id: newId(), hint: keyHint(key), createdAt: Date.now() };
+      this.sql.exec(`INSERT INTO keys (id, hash, hint, created_at) VALUES (?, ?, ?, ?)`, info.id, await hashKey(key), info.hint, info.createdAt);
+      // The project was open until now, so everyone connected came in without a key.
+      if (first) this.closeSockets(() => false, "required");
+      return Response.json({ ok: true, key, ...info }, { status: 201 });
+    }
+
+    // DELETE /keys/<id>
+    if (!itemId) return badRequest("Name the key to revoke: DELETE /keys/<id>.");
+    if (itemId === keyId) {
+      return Response.json({ ok: false, error: "You can't revoke the key you're using. Use another key to revoke this one." }, { status: 409 });
+    }
+    const removed = this.sql.exec(`DELETE FROM keys WHERE id = ? RETURNING id`, itemId).toArray().length > 0;
+    if (!removed) return Response.json({ ok: false, error: `No key with id "${itemId}".` }, { status: 404 });
+    this.closeSockets((id) => id !== itemId, "invalid");
+    return Response.json({ ok: true, revoked: itemId });
+  }
+
   // -- networking -----------------------------------------------------------
 
   private peers(exclude?: WebSocket): number {
@@ -205,16 +274,27 @@ export class ProjectRoom extends DurableObject<Env> {
     const url = new URL(request.url);
     const [, , , projectId, action = "", itemId] = url.pathname.split("/");
 
+    // Browsers can't set headers on a WebSocket, so the socket takes its key from the query string.
+    const auth = await this.authorize(request, action === "ws");
+
+    // Browsers see a refused upgrade only as a failed connection, so they ask an HTTP route why.
+    if ("denied" in auth) return keyDenied(auth.denied);
+
+    if (action === "ws") {
+      const { 0: client, 1: server } = new WebSocketPair();
+      this.ctx.acceptWebSocket(server);
+      server.serializeAttachment({ keyId: auth.keyId });
+      const doc = this.load();
+      const peers = this.peers();
+      server.send(JSON.stringify({ t: "init", doc, version: this.version, peers } satisfies ServerMessage));
+      this.broadcast({ t: "presence", peers }, server);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
     switch (action) {
-      case "ws": {
-        const { 0: client, 1: server } = new WebSocketPair();
-        this.ctx.acceptWebSocket(server);
-        const doc = this.load();
-        const peers = this.peers();
-        server.send(JSON.stringify({ t: "init", doc, version: this.version, peers } satisfies ServerMessage));
-        this.broadcast({ t: "presence", peers }, server);
-        return new Response(null, { status: 101, webSocket: client });
-      }
+      case "keys":
+        return this.handleKeys(request, auth.keyId, itemId);
+
 
       case "":
       case "export": {
@@ -225,7 +305,7 @@ export class ProjectRoom extends DurableObject<Env> {
 
       case "llms.txt": {
         const doc = this.load();
-        return new Response(projectLlmsTxt(doc, url.origin, projectId!), {
+        return new Response(projectLlmsTxt(doc, url.origin, projectId!, this.hasKeys()), {
           headers: { "Content-Type": "text/markdown; charset=utf-8" },
         });
       }
@@ -419,6 +499,19 @@ const actorOf = (request: Request): Actor => (request.headers.get("X-Kanban-Acto
 
 /** Ops whose `id` is a card, which HTTP callers may give as a card number (12 or "#12"). */
 const CARD_OPS = new Set(["updateCard", "moveCard", "deleteCard", "claimCard", "appendToCard"]);
+
+const keyDenied = (reason: "required" | "invalid") =>
+  Response.json(
+    {
+      ok: false,
+      code: reason === "required" ? "key_required" : "key_invalid",
+      error:
+        reason === "required"
+          ? `This project is protected by a key. Send it in the ${KEY_HEADER} header.`
+          : "That key isn't valid for this project. It may have been revoked.",
+    },
+    { status: 401 },
+  );
 
 const badRequest = (error: string) => Response.json({ ok: false, error }, { status: 400 });
 const notFound = () =>
