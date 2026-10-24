@@ -4,11 +4,13 @@
  * itself at /kanban.js and installed with `curl -fsSL <origin>/install | sh`.
  * It only uses the public HTTP API documented at /llms.txt. Node 18+ or Bun.
  */
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { toShortId } from "../shared/ids";
+import { CLI_VERSION } from "../shared/cli-version";
 import { DEFAULT_COLUMNS, LIMITS } from "../shared/types";
 import type { ActivityEntry } from "../shared/activity";
 import type { ExportedProject } from "../shared/validate";
@@ -37,13 +39,16 @@ import {
   type ProjectRef,
 } from "./lib";
 import { claudeSkill } from "./claude-skill";
+import { readLastCheck, selfUpdate, shouldAutoCheck } from "./update";
 import { colorEnabled, column as columnStyle, createStyle, link, num, person, plain, success, type Style } from "./style";
 
-const VERSION = "1.3.0";
+const VERSION = CLI_VERSION;
 const CONFIG_FILE = ".kanban";
 
 // The server replaces this placeholder with its own origin when serving the script.
 const SERVED_FROM: string = "__KANBAN_ORIGIN__";
+// Only a copy downloaded from a server (installed, or run straight from /kanban.js) can update itself.
+const INSTALLED = SERVED_FROM.startsWith("http");
 const DEFAULT_ORIGIN =
   process.env.KANBAN_ORIGIN || (SERVED_FROM.startsWith("http") ? SERVED_FROM : "https://kanban.infopanel.org");
 
@@ -433,6 +438,16 @@ const commands: Record<string, Command> = {
     out(st.dim("In Claude Code, run /kanban next to work through the Todo column of the board linked in .kanban."));
   },
 
+  async upgrade() {
+    if (!INSTALLED) throw new CliError("This copy of kanban wasn't downloaded from a server, so it can't update itself.");
+    const res = await selfUpdate(SERVED_FROM, VERSION, process.env).catch((err: Error) => {
+      throw new CliError(`Couldn't update: ${err.message}. Try: curl -fsSL ${SERVED_FROM}/install | sh`);
+    });
+    if (!res.updated) return out(`kanban ${VERSION} is the latest version.`);
+    out(success(st, `Updated kanban ${res.from} → ${res.to}`));
+    refreshSkill();
+  },
+
   async whoami(args) {
     out(`${person(st, agentName(args))} on ${(() => {
       try {
@@ -478,7 +493,7 @@ async function docWrite(args: Args, mode: "write" | "append", rest: string[]) {
   out(link(st, pageUrl(ref, board.project.title, `/docs/${id}`)));
 }
 
-const ALIASES: Record<string, string> = { status: "board", ls: "board", list: "board", open: "url", unclaim: "release" };
+const ALIASES: Record<string, string> = { status: "board", ls: "board", list: "board", open: "url", unclaim: "release", "self-update": "upgrade" };
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -490,6 +505,33 @@ async function main() {
   const command = commands[ALIASES[name] ?? name];
   if (!command) throw new CliError(`Unknown command "${name}". Run \`kanban help\`.`, 2);
   await command(args, rest);
+  if ((ALIASES[name] ?? name) !== "upgrade") await autoUpdate();
+}
+
+/** At most once a day, quietly update an installed CLI. Never fails the command it follows. */
+async function autoUpdate() {
+  if (!INSTALLED || !shouldAutoCheck(process.env, readLastCheck(process.env), Date.now())) return;
+  try {
+    const res = await selfUpdate(SERVED_FROM, VERSION, process.env);
+    if (!res.updated) return;
+    // stderr, so --json output on stdout stays parseable.
+    process.stderr.write(`${errStyle.dim(`kanban updated itself ${res.from} → ${res.to}. Set KANBAN_NO_UPDATE=1 to turn this off.`)}\n`);
+    refreshSkill();
+  } catch {
+    // Offline or the server is unreachable: try again tomorrow.
+  }
+}
+
+/** Rewrites an installed Claude Code skill with the new version's text. */
+function refreshSkill() {
+  const path = join(homedir(), ".claude", "skills", "kanban", "SKILL.md");
+  if (!existsSync(path)) return;
+  try {
+    const res = spawnSync(process.execPath, [process.argv[1]!, "install-skill"], { env: { ...process.env, KANBAN_NO_UPDATE: "1" } });
+    if (res.status === 0) process.stderr.write(`${errStyle.dim("Updated the Claude Code skill too.")}\n`);
+  } catch {
+    // The skill keeps its previous text; `kanban install-skill` refreshes it.
+  }
 }
 
 main().catch((err) => {

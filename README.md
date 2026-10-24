@@ -23,7 +23,12 @@ curl -fsSL https://kanban.infopanel.org/install | sh
 ```
 
 This installs `kanban` to `~/.local/bin` (set `KANBAN_INSTALL_DIR` to change it) and checks that it runs
-before replacing an existing copy. Re-run the same command to update.
+before replacing an existing copy.
+
+The CLI keeps itself up to date: about once a day, after a command, it asks the server it was installed
+from for the latest version (`/kanban.version`) and, if there's a newer one, replaces itself the same way
+the installer does and says so on stderr. Run `kanban upgrade` to update right away. Set
+`KANBAN_NO_UPDATE=1` to turn this off; it's also off when `CI` is set.
 
 ### Set up a project
 
@@ -81,6 +86,8 @@ and a unique prefix is enough. Any text argument can be `-` to read from stdin.
 | `kanban doc <title\|id>` | Print a document's Markdown |
 | `kanban doc write <title> [file\|-]` | Create or replace a document |
 | `kanban doc append <title> <text\|->` | Append to a document (creates it if missing) |
+| `kanban install-skill [--local] [--print]` | Add the `/kanban next` skill to Claude Code (see below) |
+| `kanban upgrade` | Update the CLI to the latest version now |
 
 Priority is `none | low | medium | high`; size is `none | xs | s | m | l | xl`. `next` looks for a
 column named like "Todo", "Next" or "Ready" (falling back to the first column), `start` for one named
@@ -97,6 +104,7 @@ Todo, In progress and Done.
 | `--project REF` / `KANBAN_PROJECT` | Project URL or id, overriding `.kanban` |
 | `KANBAN_ORIGIN` | Server to use when a project is given as a bare id, or for `kanban new` |
 | `--no-color` / `--color` | Turn color off or on. By default it's used only when output goes to a terminal, so agents and pipes get plain text. `NO_COLOR` and `FORCE_COLOR` are respected too. |
+| `KANBAN_NO_UPDATE` | Set to `1` to stop the daily update check |
 
 Exit codes: `0` ok, `1` error, `2` bad usage, `3` card already claimed by someone else.
 

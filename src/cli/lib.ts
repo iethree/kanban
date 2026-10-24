@@ -347,6 +347,10 @@ function helpBody(origin: string): string {
       ["kanban install-skill [--local] [--print]", "Add /kanban next, which works through the Todo column"],
     ]),
     "",
+    section("Updates", [
+      ["kanban upgrade", "Update the CLI to the latest version now. It also checks by itself once a day."],
+    ]),
+    "",
     `Cards are numbers (12 or #12). Priority: ${PRIORITIES.join("|")}. Size: ${SIZES.join("|")}.`,
     "Column and document names match case-insensitively; a unique prefix is enough.",
     'Text arguments can be "-" to read from stdin. Descriptions and documents are Markdown.',
@@ -357,6 +361,7 @@ function helpBody(origin: string): string {
     '                   (default: $KANBAN_AGENT, "agent" in .kanban, then your username)',
     "  --project REF    Project URL or id (default: $KANBAN_PROJECT, then the nearest .kanban file)",
     "  --no-color       Plain output (also: NO_COLOR=1). Color is only used in a terminal.",
+    "  KANBAN_NO_UPDATE=1  Don't check for updates (also off when CI is set)",
     "",
     "Exit codes: 0 ok, 1 error, 2 bad usage, 3 card already claimed by someone else.",
     `Update: curl -fsSL ${origin}/install | sh     API reference: ${origin}/llms.txt`,

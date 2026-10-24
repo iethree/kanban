@@ -1,5 +1,6 @@
 import { parseProjectPath } from "../shared/urls";
 import { toProjectUuid } from "../shared/ids";
+import { CLI_VERSION } from "../shared/cli-version";
 import { installScript, serveCli } from "./cli";
 import { rootLlmsTxt } from "./llms";
 import { agentLinks, prefersMarkdown, rewriteHomePage, rewriteProjectPage } from "./pages";
@@ -48,6 +49,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname === "/install") return installScript(url.origin);
   if (url.pathname === "/kanban.js") return serveCli(env.ASSETS, url.origin);
+  if (url.pathname === "/kanban.version") {
+    return new Response(`${CLI_VERSION}\n`, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=300" } });
+  }
 
   if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
     // Agents asking for Markdown get the instructions directly; browsers get the app with a hint.
