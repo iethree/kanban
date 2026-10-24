@@ -2342,7 +2342,9 @@ button.add-column:hover:not(:disabled) {
 }
 
 .card-modal-desc {
-  flex: 1;
+  /* Fill the space beside the sidebar, but never shrink below the text: a long description,
+     shown or being edited, makes the dialog scroll instead of being cut off. */
+  flex: 1 0 auto;
   min-height: 240px;
 }
 
@@ -2690,7 +2692,8 @@ div.md-field:hover {
   border: 0;
   outline: 0;
   resize: none;
-  overflow: hidden;
+  /* Normally autosized to fit; if a layout ever caps its height, it scrolls instead of clipping. */
+  overflow-y: auto;
   background: var(--surface);
   box-shadow:
     0 0 0 1px var(--border-strong),
