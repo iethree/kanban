@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { describeOp, mergeActivity, type ActivityEntry, type ActivityEvent, type Actor } from "../shared/activity";
 import { randomProjectColor } from "../shared/colors";
 import { needsGuess } from "../shared/column-icons";
-import { applyOp, claimConflict, emptyDoc, normalizeDoc } from "../shared/reducer";
+import { applyOp, claimConflict, emptyDoc, normalizeDoc, resolveCardRef } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
 import { exportDoc, importDoc, newId, sanitizeOp } from "../shared/validate";
 import { projectPath } from "../shared/urls";
@@ -345,11 +345,10 @@ export class ProjectRoom extends DurableObject<Env> {
         op.columnId = column.id;
       }
     }
-    if (CARD_OPS.has(String(op.type)) && (typeof op.id === "number" || (typeof op.id === "string" && /^#?\d+$/.test(op.id)))) {
-      const number = Number(String(op.id).replace("#", ""));
-      const card = Object.values(doc.cards).find((c) => c.number === number);
-      if (!card) return `no card #${number}`;
-      op.id = card.id;
+    if (CARD_OPS.has(String(op.type)) && (typeof op.id === "number" || typeof op.id === "string")) {
+      const id = resolveCardRef(doc, op.id);
+      if (id === null) return `no card #${String(op.id).replace("#", "")}`;
+      op.id = id;
     }
     if (op.type === "addCard" && isObj(op.card) && op.card.id === undefined) op.card = { ...op.card, id: newId() };
     if (op.type === "addDocument" && isObj(op.document) && op.document.id === undefined)

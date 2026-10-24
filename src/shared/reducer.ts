@@ -41,6 +41,19 @@ export function claimConflict(card: Card, op: { assignee: string; force?: boolea
 }
 
 /**
+ * Resolves a card reference from an HTTP caller: a card id, or a card number
+ * (12, "12" or "#12"). Ids are random hex and can be all digits, so a string
+ * naming an existing card is always taken as its id. Returns the card id, or
+ * null if no card matches.
+ */
+export function resolveCardRef(doc: Doc, ref: string | number): string | null {
+  if (typeof ref === "string" && Object.hasOwn(doc.cards, ref)) return ref;
+  const num = typeof ref === "number" ? ref : /^#?\d+$/.test(ref) ? Number(ref.replace("#", "")) : null;
+  if (num === null) return String(ref);
+  return Object.values(doc.cards).find((c) => c.number === num)?.id ?? null;
+}
+
+/**
  * Fills in fields added after a project was first saved: card numbers (in
  * board order, so older projects get sensible #1, #2, ...) and assignees.
  * Returns the same object if nothing needed changing.

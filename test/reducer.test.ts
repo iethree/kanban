@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyOp, emptyDoc, normalizeDoc } from "../src/shared/reducer";
+import { applyOp, emptyDoc, normalizeDoc, resolveCardRef } from "../src/shared/reducer";
 import type { Doc, Op } from "../src/shared/types";
 import { exportDoc, importDoc, sanitizeOp } from "../src/shared/validate";
 
@@ -206,5 +206,24 @@ describe("card numbers, claiming and appending", () => {
     const numbers = doc.columns[0]!.cardIds.map((id) => doc.cards[id]!.number);
     expect(numbers).toEqual([5, 6, 7]);
     expect(doc.nextCardNumber).toBe(8);
+  });
+});
+
+describe("resolveCardRef", () => {
+  const doc = run([{ type: "addCard", columnId: "a", card: card("1234567890123456") }], base);
+
+  test("resolves card numbers in any form", () => {
+    expect(resolveCardRef(doc, 2)).toBe("c2");
+    expect(resolveCardRef(doc, "2")).toBe("c2");
+    expect(resolveCardRef(doc, "#2")).toBe("c2");
+    expect(resolveCardRef(doc, 99)).toBeNull();
+  });
+
+  test("keeps an all-digit card id as an id", () => {
+    expect(resolveCardRef(doc, "1234567890123456")).toBe("1234567890123456");
+  });
+
+  test("passes other strings through", () => {
+    expect(resolveCardRef(doc, "c3")).toBe("c3");
   });
 });
