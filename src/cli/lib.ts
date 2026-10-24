@@ -26,7 +26,7 @@ export interface Args {
   flags: Record<string, string | true>;
 }
 
-const BOOLEAN_FLAGS = new Set(["json", "force", "help", "version", "no-save", "yes", "color", "no-color"]);
+const BOOLEAN_FLAGS = new Set(["json", "force", "help", "version", "no-save", "yes", "color", "no-color", "local", "print"]);
 
 export function parseArgs(argv: string[]): Args {
   const args: Args = { _: [], flags: {} };
@@ -341,6 +341,10 @@ function helpBody(origin: string): string {
     section("Documents", [
       ["kanban doc write <title> [file|-]", "Create or replace a document"],
       ["kanban doc append <title> <text|->", "Append to a document (creates it if missing)"],
+    ]),
+    "",
+    section("Claude Code", [
+      ["kanban install-skill [--local] [--print]", "Add /kanban next, which works through the Todo column"],
     ]),
     "",
     `Cards are numbers (12 or #12). Priority: ${PRIORITIES.join("|")}. Size: ${SIZES.join("|")}.`,

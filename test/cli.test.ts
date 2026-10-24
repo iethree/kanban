@@ -13,6 +13,7 @@ import {
   todoColumn,
 } from "../src/cli/lib";
 import { importDoc, exportDoc } from "../src/shared/validate";
+import { claudeSkill } from "../src/cli/claude-skill";
 
 const board = exportDoc(
   importDoc({
@@ -120,5 +121,15 @@ describe("activity lines", () => {
     expect(formatActivity({ ...moved, user: "agent" })).toBe("2026-10-17 09:30 UTC  agent  #7 user field: Backlog → Done");
     expect(formatActivity({ ...moved, user: "user" })).toBe("2026-10-17 09:30 UTC  user   #7 user field: Backlog → Done");
     expect(formatActivity(moved)).toBe("2026-10-17 09:30 UTC         #7 user field: Backlog → Done");
+  });
+});
+
+describe("Claude Code skill", () => {
+  test("is a kanban skill that points at the serving origin", () => {
+    const skill = claudeSkill("https://example.test");
+    expect(skill).toStartWith("---\nname: kanban\n");
+    expect(skill).toContain("curl -fsSL https://example.test/install | sh");
+    expect(skill).toContain("$ARGUMENTS");
+    expect(skill).toContain("kanban next --json");
   });
 });

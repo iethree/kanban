@@ -5,8 +5,8 @@
  * It only uses the public HTTP API documented at /llms.txt. Node 18+ or Bun.
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { userInfo } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { toShortId } from "../shared/ids";
 import { DEFAULT_COLUMNS, LIMITS } from "../shared/types";
@@ -36,9 +36,10 @@ import {
   type Args,
   type ProjectRef,
 } from "./lib";
+import { claudeSkill } from "./claude-skill";
 import { colorEnabled, column as columnStyle, createStyle, link, num, person, plain, success, type Style } from "./style";
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const CONFIG_FILE = ".kanban";
 
 // The server replaces this placeholder with its own origin when serving the script.
@@ -419,6 +420,17 @@ const commands: Record<string, Command> = {
     if (!doc) throw new CliError(`No document "${rest.join(" ")}". Run \`kanban docs\` to list them.`);
     if (args.flags.json) return json(doc);
     out(doc.body || st.dim("(empty document)"));
+  },
+
+  async "install-skill"(args) {
+    const skill = claudeSkill(DEFAULT_ORIGIN);
+    if (args.flags.print) return out(skill.trimEnd());
+    const base = args.flags.local ? process.cwd() : homedir();
+    const path = join(base, ".claude", "skills", "kanban", "SKILL.md");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, skill);
+    out(success(st, `Installed the Claude Code skill to ${st.dim(path)}`));
+    out(st.dim("In Claude Code, run /kanban next to work through the Todo column of the board linked in .kanban."));
   },
 
   async whoami(args) {

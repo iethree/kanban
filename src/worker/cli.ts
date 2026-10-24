@@ -49,11 +49,16 @@ fi
 mv "$WORK/kanban" "$DIR/kanban"
 
 echo "Installed $VERSION to $DIR/kanban"
+# Keep an installed Claude Code skill in step with the CLI.
+if [ -f "$HOME/.claude/skills/kanban/SKILL.md" ] && "$DIR/kanban" install-skill >/dev/null; then
+  echo "Updated the Claude Code skill (/kanban next)"
+fi
 case ":$PATH:" in
   *":$DIR:"*) ;;
   *) echo "Add it to your PATH:  export PATH=\\"$DIR:\\$PATH\\"" ;;
 esac
 echo "Next: kanban init <project-url>   (or: kanban new \\"Project title\\")"
+echo "Claude Code: kanban install-skill adds /kanban next, which works through the board's Todo column"
 `;
   return new Response(script, { headers: { "Content-Type": "text/x-shellscript; charset=utf-8" } });
 }

@@ -1,0 +1,57 @@
+/** The Claude Code skill that `kanban install-skill` writes, so `/kanban next` works the board's Todo column. */
+export function claudeSkill(origin: string): string {
+  return `---
+name: kanban
+description: Work through the Kanban board linked in this repository's .kanban file. Use when the user runs /kanban next, or asks you to work through, pick up or check the cards on their kanban board.
+argument-hint: "next [instructions, e.g. commit and deploy each card]"
+---
+
+# Kanban board
+
+The work in this repository is tracked on a shared Kanban board. The \`kanban\` CLI finds the board through the
+nearest \`.kanban\` file, which it looks for in the current directory and then in each parent directory.
+People can watch and edit the board while you work.
+
+Arguments: $ARGUMENTS
+
+## Before you start
+
+1. Run \`kanban url\`. If it says that no project is linked, stop. Tell the user to run
+   \`kanban init <project-url>\`.
+2. If the \`kanban\` command is not found, stop. Tell the user to install it with
+   \`curl -fsSL ${origin}/install | sh\`.
+3. If \`.kanban\` has no \`agent\` field, add \`--as claude\` to each \`start\`, \`log\`, \`done\` and \`claim\` command.
+   This puts your name on claims and notes.
+
+## \`next\`: work through the Todo column
+
+Do these steps for each card. Do not stop after the first card.
+
+1. Run \`kanban next --json\`. It gives the highest-priority unclaimed card in the Todo column (a column named
+   like "Todo", "Next" or "Ready", or else the first column). If the result is \`null\`, the column has no more
+   work: go to "When you finish".
+2. Run \`kanban start <number>\` to claim the card and move it to the in-progress column. If the command exits
+   with code 3, someone else claimed the card first: go back to step 1.
+3. Read the card's title and description. They are the specification. Read the code that the card is about.
+4. If the card is unclear, or it needs a decision that only the user can make, run
+   \`kanban log <number> "**Blocked:** <your question>"\`. Leave the card where it is and go back to step 1.
+5. Do the work. Obey the repository's instructions (for example CLAUDE.md or AGENTS.md) and match its
+   conventions. Add or update tests, then run the tests and the type checks.
+6. Commit, push or deploy only if the arguments above or the repository's instructions tell you to.
+7. When the work is complete and verified, run \`kanban done <number> "<one line: what changed>"\`. In that
+   line, give the commit hash, or say that the change is not committed. If you cannot finish the card, run
+   \`kanban log <number> "<what is done and what remains>"\` and leave the card in progress.
+8. Go back to step 1. People can add cards while you work, so always run \`kanban next\` again.
+
+## When you finish
+
+Give the user a short report. For each card, give its number, its title and the result. Identify each
+card that is blocked, not finished or not committed.
+
+## Other arguments
+
+If the arguments do not start with \`next\`, they are a request about the board, for example
+\`/kanban add a card for the login bug\` or \`/kanban what is in progress?\`. Use the CLI to do the request.
+Run \`kanban help\` to see all the commands.
+`;
+}

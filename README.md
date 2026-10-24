@@ -100,6 +100,21 @@ Todo, In progress and Done.
 
 Exit codes: `0` ok, `1` error, `2` bad usage, `3` card already claimed by someone else.
 
+### Claude Code: `/kanban next`
+
+```sh
+kanban install-skill            # writes ~/.claude/skills/kanban/SKILL.md
+kanban install-skill --local    # or .claude/skills/kanban/SKILL.md in this directory
+```
+
+This adds a `kanban` skill to Claude Code. In a directory linked by `.kanban`, run `/kanban next` and
+Claude works through the Todo column card by card: it claims each card with `kanban start`, does the work
+and runs the tests, then closes the card with `kanban done`. It keeps going until `kanban next` finds no
+unclaimed cards, and marks cards it can't decide on as blocked instead of guessing. It commits or deploys
+only if your repository's instructions or the command say so, e.g. `/kanban next commit and deploy each
+card`. Any other text, like `/kanban what's in progress?`, is treated as a request about the board.
+`--print` prints the skill instead of writing it. Re-running the installer updates an installed skill.
+
 ### Pointing an agent at a board
 
 Add something like this to a repository's `AGENTS.md` or `CLAUDE.md`. It deliberately leaves out the
