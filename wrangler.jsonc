@@ -20,7 +20,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/", "/api/*", "/llms.txt", "/robots.txt", "/p/*", "/install", "/kanban.js", "/kanban.version", "/moved"]
+    "run_worker_first": ["/", "/api/*", "/llms.txt", "/robots.txt", "/p/*", "/install", "/kban.js", "/kban.version", "/kanban.js", "/kanban.version", "/moved"]
   },
   "durable_objects": {
     "bindings": [{ "name": "PROJECTS", "class_name": "ProjectRoom" }]

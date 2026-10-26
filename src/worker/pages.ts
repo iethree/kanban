@@ -37,24 +37,24 @@ function agentHintHtml(links: ReturnType<typeof agentLinks>): string {
   const focus: string[] = [];
   if (links.cardId) {
     focus.push(
-      `This page has card ${code(links.cardId)} open. Read it with ${code(`kanban show ${links.cardId}`)}, or find it by id in the JSON from ${code(links.api)}.`,
+      `This page has card ${code(links.cardId)} open. Read it with ${code(`kban show ${links.cardId}`)}, or find it by id in the JSON from ${code(links.api)}.`,
     );
   }
   if (links.document) {
     focus.push(
-      `This page shows document ${code(links.documentId!)}. Read it with ${code(`kanban doc ${links.documentId}`)}, or as raw Markdown: <code>GET</code> ${code(links.document)}`,
+      `This page shows document ${code(links.documentId!)}. Read it with ${code(`kban doc ${links.documentId}`)}, or as raw Markdown: <code>GET</code> ${code(links.document)}`,
     );
   }
 
   const cli = [
-    `curl -fsSL ${links.origin}/install | sh     # installs the kanban CLI (Node 18+ or Bun)`,
-    `kanban init ${links.page}`,
-    "kanban board                 # columns and cards: #12 title [priority, size] @assignee",
-    "kanban next                  # highest-priority unclaimed card",
-    "kanban start 12              # claim it and move it to In progress",
-    'kanban log 12 "what changed" # append a progress note',
-    'kanban done 12 "summary"     # move it to Done',
-    "kanban help                  # everything else: add, update, documents, --json",
+    `curl -fsSL ${links.origin}/install | sh     # installs the kban CLI (Node 18+ or Bun)`,
+    `kban init ${links.page}`,
+    "kban board                 # columns and cards: #12 title [priority, size] @assignee",
+    "kban next                  # highest-priority unclaimed card",
+    "kban start 12              # claim it and move it to In progress",
+    'kban log 12 "what changed" # append a progress note',
+    'kban done 12 "summary"     # move it to Done',
+    "kban help                  # everything else: add, update, documents, --json",
   ];
 
   const http = [
@@ -64,14 +64,14 @@ function agentHintHtml(links: ReturnType<typeof agentLinks>): string {
   ];
 
   return `<section id="agent-hint" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0">
-<h1>Kanban project</h1>
+<h1>kban project</h1>
 <p>This page is a JavaScript app. If you are an AI agent or a script, you don't need a browser to read or update this project.</p>
-${focus.length ? `<ul>${focus.map((i) => `<li>${i}</li>`).join("")}</ul>\n` : ""}<h2>From a shell: the kanban CLI (recommended)</h2>
+${focus.length ? `<ul>${focus.map((i) => `<li>${i}</li>`).join("")}</ul>\n` : ""}<h2>From a shell: the kban CLI (recommended)</h2>
 <pre><code>${escapeText(cli.join("\n"))}</code></pre>
-<p>Set ${code("KANBAN_AGENT")} (or pass ${code("--as NAME")}) so your claims and notes carry your name.</p>
+<p>Set ${code("KBAN_AGENT")} (or pass ${code("--as NAME")}) so your claims and notes carry your name.</p>
 <h2>Over HTTP</h2>
 <ul>${http.map((i) => `<li>${i}</li>`).join("")}</ul>
-<p>Only the id at the end of the URL identifies the project; the name before it is cosmetic. If the project is protected, you also need one of its keys: pass ${code("--key <key>")} to the CLI (or set ${code("KANBAN_KEY")}), or send an ${code("X-Kanban-Key")} header over HTTP.</p>
+<p>Only the id at the end of the URL identifies the project; the name before it is cosmetic. If the project is protected, you also need one of its keys: pass ${code("--key <key>")} to the CLI (or set ${code("KBAN_KEY")}), or send an ${code("X-Kban-Key")} header over HTTP.</p>
 </section>`;
 }
 
@@ -111,15 +111,15 @@ export function rewriteProjectPage(response: Response, links: ReturnType<typeof 
 export function rewriteHomePage(response: Response, origin: string): Response {
   const code = (t: string) => `<code>${escapeHtml(t)}</code>`;
   const commands = [
-    `curl -fsSL ${origin}/install | sh     # installs the kanban CLI (Node 18+ or Bun)`,
-    'kanban new "Project title"            # create a project and link this directory',
-    "kanban init <project-url>             # or link an existing project",
-    "kanban help",
+    `curl -fsSL ${origin}/install | sh     # installs the kban CLI (Node 18+ or Bun)`,
+    'kban new "Project title"            # create a project and link this directory',
+    "kban init <project-url>             # or link an existing project",
+    "kban help",
   ].join("\n");
   const hint = `<section id="agent-hint" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0">
-<h1>Kanban</h1>
+<h1>kban</h1>
 <p>Real-time shared kanban boards. If you are an AI agent or a script, you don't need a browser.</p>
-<h2>From a shell: the kanban CLI (recommended)</h2>
+<h2>From a shell: the kban CLI (recommended)</h2>
 <pre><code>${escapeText(commands)}</code></pre>
 <h2>Over HTTP</h2>
 <p>Read ${code(`${origin}/llms.txt`)} for the API, including how to create a project.</p>

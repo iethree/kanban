@@ -37,5 +37,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .wrangler
 .dev.vars
 
-# kanban CLI link (contains an editable board URL)
+# kban CLI link (contains an editable board URL); .kanban is its name from before the rename
+.kban
 .kanban

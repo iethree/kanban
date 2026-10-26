@@ -1,11 +1,11 @@
 /**
- * Self-update: an installed CLI checks its server's /kanban.version at most once a day and, when the
+ * Self-update: an installed CLI checks its server's /kban.version at most once a day and, when the
  * server has a newer version, replaces its own file the way the installer does.
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = 3000;
@@ -25,12 +25,12 @@ export function isNewer(a: string, b: string): boolean {
 
 /** Whether to check automatically: never when turned off, in CI, or within a day of the last check. */
 export function shouldAutoCheck(env: Record<string, string | undefined>, lastCheck: number | null, now: number): boolean {
-  if (env.KANBAN_NO_UPDATE || env.CI) return false;
+  if (env.KBAN_NO_UPDATE || env.KANBAN_NO_UPDATE || env.CI) return false;
   return lastCheck === null || now - lastCheck >= CHECK_INTERVAL_MS || now < lastCheck;
 }
 
 function stampPath(env: Record<string, string | undefined>): string {
-  return join(env.XDG_CACHE_HOME || join(homedir(), ".cache"), "kanban", "last-update-check");
+  return join(env.XDG_CACHE_HOME || join(homedir(), ".cache"), "kban", "last-update-check");
 }
 
 export function readLastCheck(env: Record<string, string | undefined>): number | null {
@@ -53,9 +53,23 @@ function writeLastCheck(env: Record<string, string | undefined>, now: number) {
 }
 
 async function fetchText(url: string, version: string): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": `kanban-cli/${version}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await fetch(url, { headers: { "User-Agent": `kban-cli/${version}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new Error(`${url} answered ${res.status}`);
   return res.text();
+}
+
+/**
+ * The CLI was renamed from kanban to kban. The installer now installs kban with kanban as an alias; a copy
+ * installed before that is a file called kanban, so give it the new name too.
+ */
+export function addNewName(path: string) {
+  if (basename(path) !== "kanban") return;
+  const alias = join(dirname(path), "kban");
+  try {
+    if (!existsSync(alias)) symlinkSync("kanban", alias);
+  } catch {
+    // The kanban command keeps working without it.
+  }
 }
 
 export type UpdateResult = { updated: false; latest: string } | { updated: true; from: string; to: string; path: string };
@@ -63,14 +77,14 @@ export type UpdateResult = { updated: false; latest: string } | { updated: true;
 /** Downloads the CLI from `origin` over the running script if the server has a newer version. */
 export async function selfUpdate(origin: string, current: string, env: Record<string, string | undefined>): Promise<UpdateResult> {
   writeLastCheck(env, Date.now());
-  const latest = (await fetchText(`${origin}/kanban.version`, current)).trim();
+  const latest = (await fetchText(`${origin}/kban.version`, current)).trim();
   if (!isNewer(latest, current)) return { updated: false, latest };
 
   const script = process.argv[1];
   if (!script) throw new Error("can't tell where this CLI is installed");
   const path = realpathSync(script);
-  const download = await fetchText(`${origin}/kanban.js`, current);
-  if (!download.startsWith("#!")) throw new Error(`the download from ${origin}/kanban.js doesn't look like the CLI`);
+  const download = await fetchText(`${origin}/kban.js`, current);
+  if (!download.startsWith("#!")) throw new Error(`the download from ${origin}/kban.js doesn't look like the CLI`);
   // Keep this file's shebang, which the installer pointed at the runtime that's available.
   const shebang = readFileSync(path, "utf8").split("\n", 1)[0]!;
   const next = `${shebang}\n${download.slice(download.indexOf("\n") + 1)}`;
@@ -80,11 +94,12 @@ export async function selfUpdate(origin: string, current: string, env: Record<st
     writeFileSync(tmp, next);
     chmodSync(tmp, 0o755);
     // Check the new copy runs before replacing anything, like the installer does.
-    const check = spawnSync(process.execPath, [tmp, "--version"], { encoding: "utf8", timeout: 10_000, env: { ...env, KANBAN_NO_UPDATE: "1" } });
+    const check = spawnSync(process.execPath, [tmp, "--version"], { encoding: "utf8", timeout: 10_000, env: { ...env, KBAN_NO_UPDATE: "1" } });
     if (check.status !== 0) throw new Error(`the downloaded CLI failed to run: ${(check.stderr || check.stdout || "").trim()}`);
     renameSync(tmp, path);
   } finally {
     rmSync(tmp, { force: true });
   }
+  addNewName(path);
   return { updated: true, from: current, to: latest, path };
 }

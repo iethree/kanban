@@ -9,7 +9,9 @@ const ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 export const KEY_LENGTH = 16;
 export const KEY_RE = /^[0-9A-Za-z]{16}$/;
 /** HTTP header that carries a key. The app's WebSocket, which can't set headers, sends it in its first message. */
-export const KEY_HEADER = "X-Kanban-Key";
+export const KEY_HEADER = "X-Kban-Key";
+/** The header's name from before the app was renamed to kban. Servers still accept it. */
+export const OLD_KEY_HEADER = "X-Kanban-Key";
 /** Close code for a WebSocket whose key is missing, wrong or revoked. */
 export const KEY_CLOSE_CODE = 4401;
 

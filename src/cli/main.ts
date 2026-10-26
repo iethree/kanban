@@ -1,12 +1,12 @@
 /**
- * kanban — a command-line client for Kanban projects, aimed at AI agents (and
+ * kban — a command-line client for kban projects, aimed at AI agents (and
  * humans) planning and tracking work from a terminal. It is served by the app
- * itself at /kanban.js and installed with `curl -fsSL <origin>/install | sh`.
+ * itself at /kban.js and installed with `curl -fsSL <origin>/install | sh`.
  * It only uses the public HTTP API documented at /llms.txt. Node 18+ or Bun.
  */
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { ORIGIN, currentUrl } from "../shared/domains";
@@ -19,6 +19,7 @@ import type { ExportedProject } from "../shared/validate";
 import {
   CliError,
   cardRef,
+  envSetting,
   doneColumn,
   findCard,
   findColumn,
@@ -42,19 +43,21 @@ import {
   type ProjectRef,
 } from "./lib";
 import { claudeSkill } from "./claude-skill";
-import { readLastCheck, selfUpdate, shouldAutoCheck } from "./update";
+import { addNewName, readLastCheck, selfUpdate, shouldAutoCheck } from "./update";
 import { colorEnabled, column as columnStyle, createStyle, link, num, person, plain, success, type Style } from "./style";
 
 const VERSION = CLI_VERSION;
-const CONFIG_FILE = ".kanban";
+const CONFIG_FILE = ".kban";
+/** The config file's name from before the CLI was renamed to kban. Still read, and replaced by .kban on `kban init`. */
+const OLD_CONFIG_FILE = ".kanban";
 
 // The server replaces this placeholder with its own origin when serving the script.
 const SERVED_FROM: string = "__KANBAN_ORIGIN__";
-// Only a copy downloaded from a server (installed, or run straight from /kanban.js) can update itself.
+// Only a copy downloaded from a server (installed, or run straight from /kban.js) can update itself.
 const INSTALLED = SERVED_FROM.startsWith("http");
 // The server this copy came from, on its new host if the app has moved since.
 const HOME_ORIGIN = INSTALLED ? currentUrl(new URL(SERVED_FROM)).origin : ORIGIN;
-const DEFAULT_ORIGIN = process.env.KANBAN_ORIGIN || HOME_ORIGIN;
+const DEFAULT_ORIGIN = envSetting(process.env, "ORIGIN") || HOME_ORIGIN;
 
 interface Config {
   project: string;
@@ -73,12 +76,12 @@ interface OpsResult {
 
 function findConfig(start = process.cwd()): { path: string; config: Config } | null {
   for (let dir = resolve(start); ; dir = dirname(dir)) {
-    const path = join(dir, CONFIG_FILE);
-    if (existsSync(path)) {
+    const path = [CONFIG_FILE, OLD_CONFIG_FILE].map((name) => join(dir, name)).find((p) => existsSync(p));
+    if (path) {
       try {
         return { path, config: JSON.parse(readFileSync(path, "utf8")) };
       } catch {
-        throw new CliError(`${path} isn't valid JSON. Re-create it with \`kanban init <project-url>\`.`);
+        throw new CliError(`${path} isn't valid JSON. Re-create it with \`kban init <project-url>\`.`);
       }
     }
     if (dirname(dir) === dir) return null;
@@ -90,22 +93,22 @@ function writeConfig(config: Config, path = join(process.cwd(), CONFIG_FILE)): s
   return path;
 }
 
-/** The .kanban file `projectFor` would use, unless the project is given by flag or environment. */
+/** The .kban file `projectFor` would use, unless the project is given by flag or environment. */
 function linkedConfig(args: Args) {
-  return flag(args, "project") ?? process.env.KANBAN_PROJECT ? null : findConfig();
+  return flag(args, "project") ?? envSetting(process.env, "PROJECT") ? null : findConfig();
 }
 
 function projectFor(args: Args): ProjectRef {
   const linked = linkedConfig(args);
-  const value = flag(args, "project") ?? process.env.KANBAN_PROJECT ?? linked?.config.project;
+  const value = flag(args, "project") ?? envSetting(process.env, "PROJECT") ?? linked?.config.project;
   if (!value) {
     throw new CliError(
-      "No project linked here. Run `kanban init <project-url>` to link an existing project, or `kanban new <title>` to create one.",
+      "No project linked here. Run `kban init <project-url>` to link an existing project, or `kban new <title>` to create one.",
       2,
     );
   }
   const ref = parseProjectRef(value, DEFAULT_ORIGIN);
-  const key = flag(args, "key") ?? process.env.KANBAN_KEY ?? linked?.config.key;
+  const key = flag(args, "key") ?? envSetting(process.env, "KEY") ?? linked?.config.key;
   return withKey(ref, key);
 }
 
@@ -123,7 +126,7 @@ function agentName(args: Args): string {
       return undefined;
     }
   })();
-  const name = flag(args, "as") ?? process.env.KANBAN_AGENT ?? fromConfig ?? safeUsername();
+  const name = flag(args, "as") ?? envSetting(process.env, "AGENT") ?? fromConfig ?? safeUsername();
   return name.trim().slice(0, LIMITS.assignee) || "agent";
 }
 
@@ -186,7 +189,7 @@ class Api {
       res = await fetch(`${this.ref.origin}/api/p/${this.ref.id}${path}`, {
         ...init,
         headers: {
-          "User-Agent": `kanban-cli/${VERSION}`,
+          "User-Agent": `kban-cli/${VERSION}`,
           ...(this.ref.key ? { [KEY_HEADER]: this.ref.key } : {}),
           ...init?.headers,
         },
@@ -203,17 +206,17 @@ class Api {
       const code = (body as { code?: string })?.code;
       if (code === "key_required") {
         throw new KeyError(
-          "This project is protected by a key. Link it with `kanban init <project-url> --key <key>`, or set KANBAN_KEY.",
+          "This project is protected by a key. Link it with `kban init <project-url> --key <key>`, or set KBAN_KEY.",
         );
       }
       if (code === "read_only") {
         throw new KeyError(
-          "Without a key this project is read-only. Link it with `kanban init <project-url> --key <key>`, or set KANBAN_KEY.",
+          "Without a key this project is read-only. Link it with `kban init <project-url> --key <key>`, or set KBAN_KEY.",
         );
       }
       if (code === "key_invalid") {
         throw new KeyError(
-          "The key for this project doesn't work. It may have been revoked. Get a new key, then run `kanban init <project-url> --key <key>`.",
+          "The key for this project doesn't work. It may have been revoked. Get a new key, then run `kban init <project-url> --key <key>`.",
         );
       }
       const message = (body as { error?: string })?.error ?? `HTTP ${res.status}`;
@@ -255,7 +258,7 @@ function claimError(err: unknown, card: string | number): never {
   if (err instanceof CliError && err.exitCode === 3) {
     const holder = err.message.match(/claimed by "([^"]+)"/)?.[1] ?? "someone else";
     throw new CliError(
-      `#${String(card).replace("#", "")} is already claimed by ${holder}. Pick another card (kanban next), or add --force to take it over.`,
+      `#${String(card).replace("#", "")} is already claimed by ${holder}. Pick another card (kban next), or add --force to take it over.`,
       3,
     );
   }
@@ -269,7 +272,7 @@ type Command = (args: Args, rest: string[]) => Promise<void>;
 const commands: Record<string, Command> = {
   async new(args, rest) {
     const title = rest.join(" ").trim();
-    if (!title) throw new CliError('Give the project a title: kanban new "My project"', 2);
+    if (!title) throw new CliError('Give the project a title: kban new "My project"', 2);
     const columns = (flag(args, "columns") ?? DEFAULT_COLUMNS.join(","))
       .split(",")
       .map((c) => c.trim())
@@ -285,27 +288,29 @@ const commands: Record<string, Command> = {
       out(success(st, `Created ${st.bold(title)}`));
     }
     out(link(st, res.url));
-    out(st.dim("Anyone with this link can view and edit the board. Share it with your human; don't commit .kanban to a public repository."));
+    out(st.dim("Anyone with this link can view and edit the board. Share it with your human; don't commit .kban to a public repository."));
   },
 
   async init(args, rest) {
     const target = rest[0];
-    if (!target) throw new CliError("Usage: kanban init <project-url>", 2);
-    const ref = withKey(parseProjectRef(target, DEFAULT_ORIGIN), flag(args, "key") ?? process.env.KANBAN_KEY);
+    if (!target) throw new CliError("Usage: kban init <project-url>", 2);
+    const ref = withKey(parseProjectRef(target, DEFAULT_ORIGIN), flag(args, "key") ?? envSetting(process.env, "KEY"));
     const board = await new Api(ref).board().catch((err: CliError) => {
       if (err instanceof KeyError) throw err;
-      throw new CliError(`${err.message} Check the link, or create a project with \`kanban new <title>\`.`);
+      throw new CliError(`${err.message} Check the link, or create a project with \`kban new <title>\`.`);
     });
     const url = pageUrl(ref, board.project.title);
     const agent = flag(args, "as");
     const path = writeConfig({ project: url, ...(agent ? { agent } : {}), ...(ref.key ? { key: ref.key } : {}) });
+    // .kban replaces a .kanban file here, which would otherwise sit unused beside it.
+    rmSync(join(process.cwd(), OLD_CONFIG_FILE), { force: true });
     out(success(st, `Linked ${st.dim(path)} to ${st.bold(board.project.title)}`));
     out(link(st, url));
     out(
       st.dim(
         ref.key
-          ? "The link and key in .kanban let anyone edit the board; don't commit .kanban to a public repository."
-          : "Anyone with this link can view and edit the board; don't commit .kanban to a public repository.",
+          ? "The link and key in .kban let anyone edit the board; don't commit .kban to a public repository."
+          : "Anyone with this link can view and edit the board; don't commit .kban to a public repository.",
       ),
     );
   },
@@ -342,12 +347,12 @@ const commands: Record<string, Command> = {
     if (args.flags.json) return json(card ? { ...card, status: column.name } : null);
     if (!card) return out(`No unclaimed cards in ${st.bold(column.name)}.`);
     out(formatCard({ ...card, column }, ref, board.project.title, st));
-    out(`\n${st.dim("Start it with:")} ${st.cyan(`kanban start ${card.number}`)}`);
+    out(`\n${st.dim("Start it with:")} ${st.cyan(`kban start ${card.number}`)}`);
   },
 
   async add(args, rest) {
     const title = rest.join(" ").trim();
-    if (!title) throw new CliError('Usage: kanban add "Card title" [--column C] [--priority P] [--size S]', 2);
+    if (!title) throw new CliError('Usage: kban add "Card title" [--column C] [--priority P] [--size S]', 2);
     const ref = projectFor(args);
     const api = new Api(ref);
     const board = await api.board();
@@ -409,7 +414,7 @@ const commands: Record<string, Command> = {
     const board = await api.board();
     const card = findCard(board, String(cardRef(rest[0])));
     const name = rest.slice(1).join(" ");
-    if (!name) throw new CliError("Usage: kanban move <card> <column>", 2);
+    if (!name) throw new CliError("Usage: kban move <card> <column>", 2);
     const target = findColumn(board, name);
     await api.ops([{ type: "moveCard", id: card.id, columnId: target.id, index: 0 }]);
     out(success(st, `${num(st, card.number)} ${card.title} ${st.dim("→")} ${columnStyle(st, target.name)}`));
@@ -450,7 +455,7 @@ const commands: Record<string, Command> = {
 
   async delete(args, rest) {
     const id = cardRef(rest[0]);
-    if (!args.flags.yes) throw new CliError(`This permanently deletes the card. Re-run with --yes: kanban delete ${rest[0]} --yes`, 2);
+    if (!args.flags.yes) throw new CliError(`This permanently deletes the card. Re-run with --yes: kban delete ${rest[0]} --yes`, 2);
     const ref = projectFor(args);
     const board = await new Api(ref).board();
     const card = findCard(board, String(id));
@@ -475,18 +480,18 @@ const commands: Record<string, Command> = {
     const board = await new Api(ref).board();
     const docs = board.project.documents;
     if (args.flags.json) return json(docs.map(({ body, ...d }) => ({ ...d, length: body.length })));
-    if (!docs.length) return out(`No documents. Create one with: ${st.cyan('kanban doc write "Title" notes.md')}`);
+    if (!docs.length) return out(`No documents. Create one with: ${st.cyan('kban doc write "Title" notes.md')}`);
     out(docs.map((d) => `${st.dim(d.id)}  ${d.title || "Untitled"}  ${st.dim(`(${d.body.length} chars)`)}`).join("\n"));
   },
 
   async doc(args, rest) {
     const [sub, ...more] = rest;
     if (sub === "write" || sub === "append") return docWrite(args, sub, more);
-    if (!sub) throw new CliError("Usage: kanban doc <title|id>, kanban doc write <title> [file|-], kanban doc append <title> <text|->", 2);
+    if (!sub) throw new CliError("Usage: kban doc <title|id>, kban doc write <title> [file|-], kban doc append <title> <text|->", 2);
     const ref = projectFor(args);
     const board = await new Api(ref).board();
     const doc = findDocument(board, rest.join(" "));
-    if (!doc) throw new CliError(`No document "${rest.join(" ")}". Run \`kanban docs\` to list them.`);
+    if (!doc) throw new CliError(`No document "${rest.join(" ")}". Run \`kban docs\` to list them.`);
     if (args.flags.json) return json(doc);
     out(doc.body || st.dim("(empty document)"));
   },
@@ -500,7 +505,7 @@ const commands: Record<string, Command> = {
       const keys = await api.keys();
       if (args.flags.json) return json(keys);
       if (!keys.length) {
-        return out(`No keys: anyone with the link can open this project. Protect it with ${st.cyan("kanban keys add")}.`);
+        return out(`No keys: anyone with the link can open this project. Protect it with ${st.cyan("kban keys add")}.`);
       }
       out(
         keys
@@ -521,7 +526,7 @@ const commands: Record<string, Command> = {
         writeConfig({ ...linked.config, key: created.key }, linked.path);
         out(st.dim(`The project now needs a key. This one is saved in ${linked.path}.`));
       } else if (first) {
-        out(st.dim("The project now needs a key. Save this one: pass it with --key or KANBAN_KEY."));
+        out(st.dim("The project now needs a key. Save this one: pass it with --key or KBAN_KEY."));
       } else {
         out(st.dim("Give this key to whoever needs access. It can't be shown again."));
       }
@@ -529,18 +534,18 @@ const commands: Record<string, Command> = {
     }
 
     if (sub === "revoke") {
-      if (!target) throw new CliError("Usage: kanban keys revoke <id|first characters>", 2);
+      if (!target) throw new CliError("Usage: kban keys revoke <id|first characters>", 2);
       const keys = await api.keys();
       const matches = keys.filter((k) => k.id === target || k.hint.startsWith(target) || target.startsWith(k.hint));
       if (matches.length !== 1) {
-        throw new CliError(matches.length ? `"${target}" matches more than one key. Use the id from \`kanban keys\`.` : `No key "${target}". Run \`kanban keys\` to list them.`, 2);
+        throw new CliError(matches.length ? `"${target}" matches more than one key. Use the id from \`kban keys\`.` : `No key "${target}". Run \`kban keys\` to list them.`, 2);
       }
       if (matches[0]!.current) throw new CliError("You can't revoke the key you're using. Use another key to revoke this one.");
       await api.revokeKey(matches[0]!.id);
       return out(success(st, `Revoked the key ${matches[0]!.hint}…`));
     }
 
-    throw new CliError("Usage: kanban keys [list|add|revoke <id>]", 2);
+    throw new CliError("Usage: kban keys [list|add|revoke <id>]", 2);
   },
 
   async access(args, rest) {
@@ -548,7 +553,7 @@ const commands: Record<string, Command> = {
     const api = new Api(ref);
     const describe = (a: { protected: boolean; publicAccess: PublicAccess }) =>
       !a.protected
-        ? "Open: anyone with the link can view and edit. Add a key (kanban keys add) to protect it."
+        ? "Open: anyone with the link can view and edit. Add a key (kban keys add) to protect it."
         : a.publicAccess === "read"
           ? "read-only: anyone with the link can view; editing needs a key."
           : "none: the project needs a key to view or edit.";
@@ -559,7 +564,7 @@ const commands: Record<string, Command> = {
     }
     const names: Record<string, PublicAccess | undefined> = { none: "none", "read-only": "read", read: "read" };
     const publicAccess = names[wanted];
-    if (!publicAccess) throw new CliError("Usage: kanban access [none|read-only]", 2);
+    if (!publicAccess) throw new CliError("Usage: kban access [none|read-only]", 2);
     await api.setAccess(publicAccess);
     out(success(st, describe({ protected: true, publicAccess })));
   },
@@ -568,20 +573,21 @@ const commands: Record<string, Command> = {
     const skill = claudeSkill(DEFAULT_ORIGIN);
     if (args.flags.print) return out(skill.trimEnd());
     const base = args.flags.local ? process.cwd() : homedir();
-    const path = join(base, ".claude", "skills", "kanban", "SKILL.md");
+    const path = join(base, ".claude", "skills", "kban", "SKILL.md");
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, skill);
+    removeOldSkill(base);
     out(success(st, `Installed the Claude Code skill to ${st.dim(path)}`));
-    out(st.dim("In Claude Code, run /kanban next to work through the Todo column of the board linked in .kanban."));
+    out(st.dim("In Claude Code, run /kban next to work through the Todo column of the board linked in .kban."));
   },
 
   async upgrade() {
-    if (!INSTALLED) throw new CliError("This copy of kanban wasn't downloaded from a server, so it can't update itself.");
+    if (!INSTALLED) throw new CliError("This copy of kban wasn't downloaded from a server, so it can't update itself.");
     const res = await selfUpdate(HOME_ORIGIN, VERSION, process.env).catch((err: Error) => {
       throw new CliError(`Couldn't update: ${err.message}. Try: curl -fsSL ${HOME_ORIGIN}/install | sh`);
     });
-    if (!res.updated) return out(`kanban ${VERSION} is the latest version.`);
-    out(success(st, `Updated kanban ${res.from} → ${res.to}`));
+    if (!res.updated) return out(`kban ${VERSION} is the latest version.`);
+    out(success(st, `Updated kban ${res.from} → ${res.to}`));
     refreshSkill();
   },
 
@@ -599,7 +605,7 @@ const commands: Record<string, Command> = {
 
 async function docWrite(args: Args, mode: "write" | "append", rest: string[]) {
   const title = rest[0];
-  if (!title) throw new CliError(`Usage: kanban doc ${mode} <title> ${mode === "write" ? "[file|-]" : "<text|->"}`, 2);
+  if (!title) throw new CliError(`Usage: kban doc ${mode} <title> ${mode === "write" ? "[file|-]" : "<text|->"}`, 2);
   const ref = projectFor(args);
   const api = new Api(ref);
   const board = await api.board();
@@ -633,16 +639,26 @@ async function docWrite(args: Args, mode: "write" | "append", rest: string[]) {
 const ALIASES: Record<string, string> = { status: "board", ls: "board", list: "board", open: "url", unclaim: "release", "self-update": "upgrade" };
 
 async function main() {
+  if (INSTALLED) giveNewName();
   const args = parseArgs(process.argv.slice(2));
   st = createStyle(colorEnabled(args.flags, process.stdout.isTTY, process.env));
   errStyle = createStyle(colorEnabled(args.flags, process.stderr.isTTY, process.env));
   const [name, ...rest] = args._;
-  if (args.flags.version) return out(`kanban ${VERSION}`);
+  if (args.flags.version) return out(`kban ${VERSION}`);
   if (!name || name === "help" || args.flags.help) return out(helpText(DEFAULT_ORIGIN, st));
   const command = commands[ALIASES[name] ?? name];
-  if (!command) throw new CliError(`Unknown command "${name}". Run \`kanban help\`.`, 2);
+  if (!command) throw new CliError(`Unknown command "${name}". Run \`kban help\`.`, 2);
   await command(args, rest);
   if ((ALIASES[name] ?? name) !== "upgrade") await autoUpdate();
+}
+
+/** A copy that an older version updated in place is still a file called kanban; add the kban command beside it. */
+function giveNewName() {
+  try {
+    addNewName(realpathSync(process.argv[1]!));
+  } catch {
+    // The kanban command keeps working.
+  }
 }
 
 /** At most once a day, quietly update an installed CLI. Never fails the command it follows. */
@@ -652,27 +668,42 @@ async function autoUpdate() {
     const res = await selfUpdate(HOME_ORIGIN, VERSION, process.env);
     if (!res.updated) return;
     // stderr, so --json output on stdout stays parseable.
-    process.stderr.write(`${errStyle.dim(`kanban updated itself ${res.from} → ${res.to}. Set KANBAN_NO_UPDATE=1 to turn this off.`)}\n`);
+    process.stderr.write(`${errStyle.dim(`kban updated itself ${res.from} → ${res.to}. Set KBAN_NO_UPDATE=1 to turn this off.`)}\n`);
     refreshSkill();
   } catch {
     // Offline or the server is unreachable: try again tomorrow.
   }
 }
 
+/** Where `install-skill` put the skill before the CLI was renamed to kban, under ~ or a project. */
+const oldSkillPath = (base: string) => join(base, ".claude", "skills", "kanban", "SKILL.md");
+
+/** Deletes the skill an older version installed as /kanban, now that it's /kban. Leaves a skill someone else wrote alone. */
+function removeOldSkill(base: string) {
+  const path = oldSkillPath(base);
+  try {
+    if (!readFileSync(path, "utf8").startsWith("---\nname: kanban\n")) return;
+    rmSync(path);
+    rmdirSync(dirname(path));
+  } catch {
+    // Not there, not ours, or the directory has other files in it.
+  }
+}
+
 /** Rewrites an installed Claude Code skill with the new version's text. */
 function refreshSkill() {
-  const path = join(homedir(), ".claude", "skills", "kanban", "SKILL.md");
-  if (!existsSync(path)) return;
+  const installed = [join(homedir(), ".claude", "skills", "kban", "SKILL.md"), oldSkillPath(homedir())];
+  if (!installed.some((path) => existsSync(path))) return;
   try {
-    const res = spawnSync(process.execPath, [process.argv[1]!, "install-skill"], { env: { ...process.env, KANBAN_NO_UPDATE: "1" } });
+    const res = spawnSync(process.execPath, [process.argv[1]!, "install-skill"], { env: { ...process.env, KBAN_NO_UPDATE: "1" } });
     if (res.status === 0) process.stderr.write(`${errStyle.dim("Updated the Claude Code skill too.")}\n`);
   } catch {
-    // The skill keeps its previous text; `kanban install-skill` refreshes it.
+    // The skill keeps its previous text; `kban install-skill` refreshes it.
   }
 }
 
 main().catch((err) => {
   const code = err instanceof CliError ? err.exitCode : 1;
-  process.stderr.write(`${errStyle.red(errStyle.bold("kanban:"))} ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(`${errStyle.red(errStyle.bold("kban:"))} ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(code);
 });

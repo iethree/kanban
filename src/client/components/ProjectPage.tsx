@@ -54,9 +54,9 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
   useProjectFavicon(color);
 
   useEffect(() => {
-    document.title = doc?.initialized ? `${doc.title || "Untitled project"} · Kanban` : "Kanban";
+    document.title = doc?.initialized ? `${doc.title || "Untitled project"} · kban` : "kban";
     return () => {
-      document.title = "Kanban";
+      document.title = "kban";
     };
   }, [doc?.initialized, doc?.title]);
 
@@ -84,10 +84,10 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
         "",
         `If you can run shell commands, install the CLI and link this project:`,
         `  curl -fsSL ${location.origin}/install | sh`,
-        `  kanban init ${location.origin}${base}${key ? ` --key ${key}` : ""}`,
-        "Then use `kanban next`, `kanban start <n>`, `kanban log <n> \"...\"` and `kanban done <n> \"...\"` (see `kanban help`).",
+        `  kban init ${location.origin}${base}${key ? ` --key ${key}` : ""}`,
+        "Then use `kban next`, `kban start <n>`, `kban log <n> \"...\"` and `kban done <n> \"...\"` (see `kban help`).",
         "",
-        `Otherwise, fetch ${location.origin}/api/p/${toShortId(projectId)}/llms.txt${key ? ` with the header "X-Kanban-Key: ${key}"` : ""}: it describes the board and the HTTP API.`,
+        `Otherwise, fetch ${location.origin}/api/p/${toShortId(projectId)}/llms.txt${key ? ` with the header "X-Kban-Key: ${key}"` : ""}: it describes the board and the HTTP API.`,
       ].join("\n"),
       key
         ? "Agent instructions copied. They include the project link and key, which let anyone edit it: don't commit them to a public repo."
@@ -129,7 +129,7 @@ export function ProjectPage({ projectId, view }: { projectId: string; view: Proj
             }}
           >
             <Logo color={color} />
-            <span>Kanban</span>
+            <span>kban</span>
           </a>
           <span className="crumb-sep">/</span>
           <span className="crumb">{doc?.initialized ? doc.title || "Untitled project" : status === "locked" ? "Protected project" : "New project"}</span>

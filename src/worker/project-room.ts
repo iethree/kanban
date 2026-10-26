@@ -4,7 +4,7 @@ import { randomProjectColor } from "../shared/colors";
 import { needsGuess } from "../shared/column-icons";
 import { applyOp, claimConflict, emptyDoc, normalizeDoc, resolveCardRef } from "../shared/reducer";
 import type { ClientMessage, Doc, Op, ServerMessage } from "../shared/types";
-import { KEY_CLOSE_CODE, KEY_HEADER, KEY_RE, PUBLIC_ACCESS, generateKey, hashKey, keyHint, type KeyInfo, type PublicAccess } from "../shared/keys";
+import { KEY_CLOSE_CODE, KEY_HEADER, KEY_RE, OLD_KEY_HEADER, PUBLIC_ACCESS, generateKey, hashKey, keyHint, type KeyInfo, type PublicAccess } from "../shared/keys";
 import { exportDoc, importDoc, newId, sanitizeOp } from "../shared/validate";
 import { projectPath } from "../shared/urls";
 import { guessColumnIcons } from "./icon-guess";
@@ -199,7 +199,7 @@ export class ProjectRoom extends DurableObject<Env> {
    */
   private async authorize(request: Request): Promise<KeyCheck> {
     const bearer = request.headers.get("Authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
-    return this.checkKey(request.headers.get(KEY_HEADER) ?? bearer ?? null);
+    return this.checkKey(request.headers.get(KEY_HEADER) ?? request.headers.get(OLD_KEY_HEADER) ?? bearer ?? null);
   }
 
   /** Keys are never accepted in URLs, where they'd be shared along with the link. */
@@ -556,10 +556,11 @@ const socketState = (ws: WebSocket): SocketState => (ws.deserializeAttachment() 
 
 /**
  * Who sent an HTTP request that isn't an op batch (currently only /import).
- * The browser app marks its own uploads with `X-Kanban-Actor: user`; anything
+ * The browser app marks its own uploads with `X-Kban-Actor: user` (`X-Kanban-Actor` before the rename); anything
  * else over HTTP is treated as an agent.
  */
-const actorOf = (request: Request): Actor => (request.headers.get("X-Kanban-Actor") === "user" ? "user" : "agent");
+const actorOf = (request: Request): Actor =>
+  (request.headers.get("X-Kban-Actor") ?? request.headers.get("X-Kanban-Actor")) === "user" ? "user" : "agent";
 
 /** Ops whose `id` is a card, which HTTP callers may give as a card number (12 or "#12"). */
 const CARD_OPS = new Set(["updateCard", "moveCard", "deleteCard", "claimCard", "appendToCard"]);
@@ -602,7 +603,7 @@ const notFound = () =>
   Response.json(
     {
       ok: false,
-      error: 'Project not found. Create it with `kanban new "Title"`, or by POSTing an init op to /ops (see /llms.txt).',
+      error: 'Project not found. Create it with `kban new "Title"`, or by POSTing an init op to /ops (see /llms.txt).',
     },
     { status: 404 },
   );

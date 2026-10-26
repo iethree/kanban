@@ -3,6 +3,7 @@ import {
   cardLine,
   cardRef,
   doneColumn,
+  envSetting,
   findCard,
   findColumn,
   logEntry,
@@ -131,12 +132,20 @@ describe("activity lines", () => {
   });
 });
 
+describe("environment settings", () => {
+  test("KBAN_ wins over KANBAN_, the prefix from before the rename", () => {
+    expect(envSetting({ KBAN_KEY: "a", KANBAN_KEY: "b" }, "KEY")).toBe("a");
+    expect(envSetting({ KANBAN_KEY: "b" }, "KEY")).toBe("b");
+    expect(envSetting({ KBAN_KEY: "" }, "KEY")).toBeUndefined();
+  });
+});
+
 describe("Claude Code skill", () => {
-  test("is a kanban skill that points at the serving origin", () => {
+  test("is a kban skill that points at the serving origin", () => {
     const skill = claudeSkill("https://example.test");
-    expect(skill).toStartWith("---\nname: kanban\n");
+    expect(skill).toStartWith("---\nname: kban\n");
     expect(skill).toContain("curl -fsSL https://example.test/install | sh");
     expect(skill).toContain("$ARGUMENTS");
-    expect(skill).toContain("kanban next --json");
+    expect(skill).toContain("kban next --json");
   });
 });

@@ -18,6 +18,7 @@ test("auto-checks at most once a day, and never when turned off or in CI", () =>
   expect(shouldAutoCheck({}, now - CHECK_INTERVAL_MS, now)).toBe(true);
   expect(shouldAutoCheck({}, now - 1000, now)).toBe(false);
   expect(shouldAutoCheck({}, now + 5000, now)).toBe(true); // clock went backwards
-  expect(shouldAutoCheck({ KANBAN_NO_UPDATE: "1" }, null, now)).toBe(false);
+  expect(shouldAutoCheck({ KBAN_NO_UPDATE: "1" }, null, now)).toBe(false);
+  expect(shouldAutoCheck({ KANBAN_NO_UPDATE: "1" }, null, now)).toBe(false); // the name before the rename
   expect(shouldAutoCheck({ CI: "true" }, null, now)).toBe(false);
 });

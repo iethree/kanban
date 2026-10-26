@@ -12,7 +12,7 @@ const escapeAttr = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 function html(body: string, headers: Record<string, string> = {}) {
-  return new Response(`<!doctype html>\n<meta charset="utf-8">\n<meta name="robots" content="noindex">\n<title>Kanban has moved</title>\n${body}\n`, {
+  return new Response(`<!doctype html>\n<meta charset="utf-8">\n<meta name="robots" content="noindex">\n<title>kban has moved</title>\n${body}\n`, {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...headers },
   });
 }
@@ -34,7 +34,7 @@ export function fromMovedHost(request: Request): Response | null {
 
   // The keys go in a POST body, never in a URL, so they can't end up in history, logs or a shared link.
   return html(
-    `<p>Kanban has moved to <a href="${escapeAttr(target.href)}">${escapeAttr(target.host)}</a>.</p>
+    `<p>kban has moved to <a href="${escapeAttr(target.href)}">${escapeAttr(target.host)}</a>.</p>
 <form method="post" action="${escapeAttr(new URL(HANDOVER_PATH, ORIGIN).href)}"><input type="hidden" name="keys"><input type="hidden" name="path"></form>
 <script>
 (function () {

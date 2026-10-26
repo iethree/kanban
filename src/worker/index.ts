@@ -61,8 +61,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   if (url.pathname === "/install") return installScript(url.origin);
-  if (url.pathname === "/kanban.js") return serveCli(env.ASSETS, url.origin);
-  if (url.pathname === "/kanban.version") {
+  // /kanban.js and /kanban.version are the paths CLIs used before the rename to kban; old copies update through them.
+  if (url.pathname === "/kban.js" || url.pathname === "/kanban.js") return serveCli(env.ASSETS, url.origin);
+  if (url.pathname === "/kban.version" || url.pathname === "/kanban.version") {
     return new Response(`${CLI_VERSION}\n`, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=300" } });
   }
 

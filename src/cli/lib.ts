@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the kanban CLI: argument parsing, project/card/column
+ * Pure helpers for the kban CLI: argument parsing, project/card/column
  * resolution and output formatting. Kept free of I/O so it can be unit tested.
  */
 import type { ActivityEntry } from "../shared/activity";
@@ -75,6 +75,13 @@ export function parseSize(value: string): Size {
   return v;
 }
 
+/**
+ * A setting from the environment: `KBAN_<name>`, or `KANBAN_<name>` from before the CLI was renamed to kban.
+ */
+export function envSetting(env: Record<string, string | undefined>, name: string): string | undefined {
+  return env[`KBAN_${name}`] || env[`KANBAN_${name}`] || undefined;
+}
+
 // -- projects -----------------------------------------------------------------
 
 export interface ProjectRef {
@@ -117,7 +124,7 @@ export function findCard(board: ExportedProject, ref: string): BoardCard {
   const cards = boardCards(board);
   const num = ref.match(/^#?(\d+)$/);
   const card = num ? cards.find((c) => c.number === Number(num[1])) : cards.find((c) => c.id === ref);
-  if (!card) throw new CliError(`No card ${num ? `#${num[1]}` : `"${ref}"`}. Run \`kanban board\` to see card numbers.`);
+  if (!card) throw new CliError(`No card ${num ? `#${num[1]}` : `"${ref}"`}. Run \`kban board\` to see card numbers.`);
   return card;
 }
 
@@ -284,9 +291,9 @@ export function helpText(origin: string, s: Style = plain): string {
   return helpBody(origin)
     .split("\n")
     .map((line, i) => {
-      if (i === 0) return line.replace(/^kanban/, s.bold("kanban"));
+      if (i === 0) return line.replace(/^kban/, s.bold("kban"));
       if (/^[A-Z][A-Za-z ]+$/.test(line)) return s.bold(line); // section heading
-      const command = line.match(/^(\s+)(kanban \S.*?)(\s{2,}.*)?$/);
+      const command = line.match(/^(\s+)(kban \S.*?)(\s{2,}.*)?$/);
       if (command) return `${command[1]}${s.cyan(command[2]!)}${command[3] ?? ""}`;
       const option = line.match(/^(\s+)(--\S+(?: \S+)?)(\s{2,}.*)$/);
       if (option) return `${option[1]}${s.cyan(option[2]!)}${option[3]}`;
@@ -310,55 +317,55 @@ function helpBody(origin: string): string {
     [title, ...rows.map(([command, description]) => helpRow(command, description))].join("\n");
 
   return [
-    `kanban — plan and track work on a shared Kanban board (${origin})`,
+    `kban — plan and track work on a shared kanban board (${origin})`,
     "",
-    `Typical loop:  kanban next → kanban start 12 → kanban log 12 "…" → kanban done 12 "…"`,
+    `Typical loop:  kban next → kban start 12 → kban log 12 "…" → kban done 12 "…"`,
     "",
     section("Setup", [
-      ["kanban new <title> [--columns A,B,C]", "Create a project and link this directory"],
-      ["kanban init <project-url> [--key K]", "Link this directory to an existing project (and its key)"],
-      ["kanban url", "Print the project's web address for humans"],
+      ["kban new <title> [--columns A,B,C]", "Create a project and link this directory"],
+      ["kban init <project-url> [--key K]", "Link this directory to an existing project (and its key)"],
+      ["kban url", "Print the project's web address for humans"],
     ]),
     "",
     section("Reading", [
-      ["kanban board", "Columns and cards: #number title [priority, size] @assignee"],
-      ["kanban show <card>", "One card, including its description"],
-      ["kanban next [--column C]", "Highest-priority unclaimed card in the Todo column (or C)"],
-      ["kanban activity [--limit N]", "What changed lately: moves, claims, edits, notes (default 20)"],
-      ["kanban docs", "List documents"],
-      ["kanban doc <title|id>", "Print a document's Markdown"],
+      ["kban board", "Columns and cards: #number title [priority, size] @assignee"],
+      ["kban show <card>", "One card, including its description"],
+      ["kban next [--column C]", "Highest-priority unclaimed card in the Todo column (or C)"],
+      ["kban activity [--limit N]", "What changed lately: moves, claims, edits, notes (default 20)"],
+      ["kban docs", "List documents"],
+      ["kban doc <title|id>", "Print a document's Markdown"],
     ]),
     "",
     section("Working on cards", [
-      ["kanban add <title> [--column C] [--priority P] [--size S] [--description TEXT|-]", "Add a card"],
-      ["kanban start <card> [--force]", "Claim the card and move it to the top of the in-progress column"],
-      ["kanban log <card> <text|->", "Append a timestamped progress note to the card's description"],
-      ["kanban done <card> [summary]", "Append the summary and move the card to the done column"],
-      ["kanban move <card> <column>", "Move to the top of another column"],
-      ["kanban update <card> [--title T] [--priority P] [--size S] [--assignee NAME] [--description TEXT|-]", "Change fields"],
-      ["kanban claim <card> [--force]", "Mark yourself as working on it, without moving it"],
-      ["kanban release <card>", "Clear the assignee"],
-      ["kanban delete <card> --yes", "Delete a card"],
+      ["kban add <title> [--column C] [--priority P] [--size S] [--description TEXT|-]", "Add a card"],
+      ["kban start <card> [--force]", "Claim the card and move it to the top of the in-progress column"],
+      ["kban log <card> <text|->", "Append a timestamped progress note to the card's description"],
+      ["kban done <card> [summary]", "Append the summary and move the card to the done column"],
+      ["kban move <card> <column>", "Move to the top of another column"],
+      ["kban update <card> [--title T] [--priority P] [--size S] [--assignee NAME] [--description TEXT|-]", "Change fields"],
+      ["kban claim <card> [--force]", "Mark yourself as working on it, without moving it"],
+      ["kban release <card>", "Clear the assignee"],
+      ["kban delete <card> --yes", "Delete a card"],
     ]),
     "",
     section("Documents", [
-      ["kanban doc write <title> [file|-]", "Create or replace a document"],
-      ["kanban doc append <title> <text|->", "Append to a document (creates it if missing)"],
+      ["kban doc write <title> [file|-]", "Create or replace a document"],
+      ["kban doc append <title> <text|->", "Append to a document (creates it if missing)"],
     ]),
     "",
     section("Keys (a protected project needs a key as well as its link)", [
-      ["kanban keys", "List the project's keys"],
-      ["kanban keys add", "Create a key. The first one protects the project and is saved in .kanban"],
-      ["kanban keys revoke <id|first characters>", "Revoke a key (not the one you're using)"],
-      ["kanban access [none|read-only]", "Show or set what people without a key can do"],
+      ["kban keys", "List the project's keys"],
+      ["kban keys add", "Create a key. The first one protects the project and is saved in .kban"],
+      ["kban keys revoke <id|first characters>", "Revoke a key (not the one you're using)"],
+      ["kban access [none|read-only]", "Show or set what people without a key can do"],
     ]),
     "",
     section("Claude Code", [
-      ["kanban install-skill [--local] [--print]", "Add /kanban next, which works through the Todo column"],
+      ["kban install-skill [--local] [--print]", "Add /kban next, which works through the Todo column"],
     ]),
     "",
     section("Updates", [
-      ["kanban upgrade", "Update the CLI to the latest version now. It also checks by itself once a day."],
+      ["kban upgrade", "Update the CLI to the latest version now. It also checks by itself once a day."],
     ]),
     "",
     `Cards are numbers (12 or #12). Priority: ${PRIORITIES.join("|")}. Size: ${SIZES.join("|")}.`,
@@ -368,11 +375,13 @@ function helpBody(origin: string): string {
     "Options",
     "  --json           JSON output for board, show, next, docs and doc",
     "  --as NAME        Who you are, for claims and log entries",
-    '                   (default: $KANBAN_AGENT, "agent" in .kanban, then your username)',
-    "  --project REF    Project URL or id (default: $KANBAN_PROJECT, then the nearest .kanban file)",
-    '  --key KEY        Key for a protected project (default: $KANBAN_KEY, then "key" in .kanban)',
+    '                   (default: $KBAN_AGENT, "agent" in .kban, then your username)',
+    "  --project REF    Project URL or id (default: $KBAN_PROJECT, then the nearest .kban file)",
+    '  --key KEY        Key for a protected project (default: $KBAN_KEY, then "key" in .kban)',
     "  --no-color       Plain output (also: NO_COLOR=1). Color is only used in a terminal.",
-    "  KANBAN_NO_UPDATE=1  Don't check for updates (also off when CI is set)",
+    "  KBAN_NO_UPDATE=1    Don't check for updates (also off when CI is set)",
+    "",
+    "kban used to be called kanban: the kanban command, .kanban files and KANBAN_* variables still work.",
     "",
     "Exit codes: 0 ok, 1 error, 2 bad usage, 3 card already claimed by someone else.",
     `Update: curl -fsSL ${origin}/install | sh     API reference: ${origin}/llms.txt`,

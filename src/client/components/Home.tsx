@@ -40,7 +40,7 @@ export function Home() {
       <header className="topbar">
         <a href="/" className="brand" onClick={(e) => e.preventDefault()}>
           <Logo />
-          <span>Kanban</span>
+          <span>kban</span>
         </a>
         <div className="topbar-actions">
           <ThemeToggle />
@@ -128,7 +128,7 @@ export function Home() {
           <span>
             Working with an AI agent? In a project, choose <Ellipsis size={13} aria-label="the options menu" className="inline-icon" />{" "}
             → <strong>Copy agent instructions</strong> and paste them into its prompt. It can then plan and track its work with the{" "}
-            <code>kanban</code> CLI or the <a href="/llms.txt">HTTP API</a>. The instructions contain the project link, which
+            <code>kban</code> CLI or the <a href="/llms.txt">HTTP API</a>. The instructions contain the project link, which
             is the key to edit it, so keep them out of public repos.
           </span>
         </p>

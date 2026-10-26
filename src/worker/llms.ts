@@ -5,23 +5,23 @@ import { projectPath } from "../shared/urls";
 
 /** The "use the CLI" section, shown before the raw HTTP API in both llms.txt files. */
 function cliSection(origin: string, projectUrl?: string, isProtected = false): string {
-  return `## Quickest path: the \`kanban\` CLI
+  return `## Quickest path: the \`kban\` CLI
 
 If you can run shell commands, use the CLI instead of hand-writing HTTP requests. It needs Node 18+ or Bun.
 
 \`\`\`sh
 curl -fsSL ${origin}/install | sh
-${projectUrl ? `kanban init ${projectUrl}${isProtected ? " --key <key>" : ""}` : `kanban new "Project title"     # or: kanban init <project-url>`}
-kanban board                     # columns and cards: #12 title [priority, size] @assignee
-kanban next                      # the highest-priority unclaimed card in "Todo"
-kanban start 12                  # claim it and move it to In progress
-kanban log 12 "Found the cause: …"
-kanban done 12 "Fixed in a1b2c3d"
+${projectUrl ? `kban init ${projectUrl}${isProtected ? " --key <key>" : ""}` : `kban new "Project title"     # or: kban init <project-url>`}
+kban board                     # columns and cards: #12 title [priority, size] @assignee
+kban next                      # the highest-priority unclaimed card in "Todo"
+kban start 12                  # claim it and move it to In progress
+kban log 12 "Found the cause: …"
+kban done 12 "Fixed in a1b2c3d"
 \`\`\`
 
-\`kanban init\` writes a \`.kanban\` file in the current directory so later commands know the project. Set
-\`KANBAN_AGENT\` (or pass \`--as NAME\`) so your claims and notes carry your name. Run \`kanban help\` for the rest:
-adding cards, updating fields, documents (\`kanban doc write "Plan" plan.md\`) and \`--json\` output.`;
+\`kban init\` writes a \`.kban\` file in the current directory so later commands know the project. Set
+\`KBAN_AGENT\` (or pass \`--as NAME\`) so your claims and notes carry your name. Run \`kban help\` for the rest:
+adding cards, updating fields, documents (\`kban doc write "Plan" plan.md\`) and \`--json\` output.`;
 }
 
 /** Cards listed per column in a project's llms.txt before pointing at the JSON endpoint. */
@@ -29,8 +29,8 @@ const MAX_LISTED_CARDS = 150;
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** The curl option that sends a protected project's key, taken from $KANBAN_KEY. */
-const keyOption = (isProtected: boolean) => (isProtected ? ` -H "X-Kanban-Key: $KANBAN_KEY"` : "");
+/** The curl option that sends a protected project's key, taken from $KBAN_KEY. */
+const keyOption = (isProtected: boolean) => (isProtected ? ` -H "X-Kban-Key: $KBAN_KEY"` : "");
 
 /** A copy-pasteable curl command posting the given ops, single-quoted for the shell. */
 function curlOps(base: string, ops: unknown[], isProtected = false): string {
@@ -42,7 +42,7 @@ function apiReference(base: string): string {
   return `## API
 
 The project URL is the credential. A project can also be **protected with keys**: then every request needs
-one, in an \`X-Kanban-Key: <key>\` header (or \`Authorization: Bearer <key>\`), and a request without a valid key
+one, in an \`X-Kban-Key: <key>\` header (or \`Authorization: Bearer <key>\`), and a request without a valid key
 gets status 401 with \`"code": "key_required"\` or \`"key_invalid"\`. A protected project can allow
 read-only access without a key: then reads work, and changes get 403 with \`"code": "read_only"\`. Keys are 16 letters and digits; ask the
 human for one. Send JSON with \`Content-Type: application/json\`.
@@ -137,9 +137,9 @@ Use the board as the shared source of truth for your work. Humans may be watchin
 1. **Read before you write.** Fetch the board at the start of a session and before changing a card, since
    people edit concurrently.
 2. **Claim work visibly.** Before you start a card, claim it with your name and move it to the top of the
-   in-progress column (e.g. "In progress"); \`kanban start 12\` does both. If it's claimed by someone else, pick
+   in-progress column (e.g. "In progress"); \`kban start 12\` does both. If it's claimed by someone else, pick
    another card. Work on one card at a time unless asked otherwise.
-3. **Log progress on the card** by appending (\`kanban log 12 "…"\` or \`appendToCard\`), never by rewriting the
+3. **Log progress on the card** by appending (\`kban log 12 "…"\` or \`appendToCard\`), never by rewriting the
    description. Keep notes short and factual: what changed, links, what's next.
 4. **Finish cleanly.** When a card is done, add a one-line summary of the outcome and move it to the done
    column (e.g. "Done").
@@ -154,7 +154,7 @@ Use the board as the shared source of truth for your work. Humans may be watchin
 9. **Batch related edits** into one \`POST /ops\` request.`;
 
 export function rootLlmsTxt(origin: string): string {
-  return `# Kanban
+  return `# kban
 
 > Real-time shared kanban boards. Each project lives at \`${origin}/p/<name>/<id>\`, and anyone with that URL
 > can view and edit it — there are no accounts. Projects have ordered columns (statuses), cards, and a flat list
@@ -259,11 +259,11 @@ ${WORKING_AGREEMENT}
 
   return `# ${oneLine(doc.title) || "Untitled project"}
 
-> Kanban project at ${pageUrl}. ${
+> kban project at ${pageUrl}. ${
     readOnlyGuest
-      ? "It is protected, and you have no key, so you can read it but not change it. To edit, ask the human for a key and send it with every request (`--key` or `KANBAN_KEY` for the CLI; the `X-Kanban-Key` header over HTTP; the commands below read it from `$KANBAN_KEY`)."
+      ? "It is protected, and you have no key, so you can read it but not change it. To edit, ask the human for a key and send it with every request (`--key` or `KBAN_KEY` for the CLI; the `X-Kban-Key` header over HTTP; the commands below read it from `$KBAN_KEY`)."
       : isProtected
-        ? "It is protected: send your key with every request (`--key` or `KANBAN_KEY` for the CLI; the `X-Kanban-Key` header over HTTP; the commands below read it from `$KANBAN_KEY`)."
+        ? "It is protected: send your key with every request (`--key` or `KBAN_KEY` for the CLI; the `X-Kban-Key` header over HTTP; the commands below read it from `$KBAN_KEY`)."
         : "Anyone with that link can view and edit."
   } Humans may be watching live.${
     doc.description ? `\n>\n> ${doc.description.trim().split("\n").join("\n> ")}` : ""
