@@ -58,6 +58,8 @@ describe("project references", () => {
       id: SHORT,
     });
     expect(() => parseProjectRef("https://k.example/p/nope", "x")).toThrow();
+    // The app moved from kanban.infopanel.org, so old .kanban files point at the new host.
+    expect(parseProjectRef(`https://kanban.infopanel.org/p/my-board/${SHORT}`, "x").origin).toBe("https://kban.dev");
     // Keys never travel in links, so one tacked onto a URL is ignored.
     expect(parseProjectRef(`https://k.example/p/my-board/${SHORT}#key=AbCd1234EfGh5678`, "x")).toEqual({
       origin: "https://k.example",

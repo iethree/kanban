@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { ORIGIN, currentUrl } from "../shared/domains";
 import { toShortId } from "../shared/ids";
 import { CLI_VERSION } from "../shared/cli-version";
 import { KEY_HEADER, KEY_RE, type KeyInfo, type PublicAccess } from "../shared/keys";
@@ -51,8 +52,9 @@ const CONFIG_FILE = ".kanban";
 const SERVED_FROM: string = "__KANBAN_ORIGIN__";
 // Only a copy downloaded from a server (installed, or run straight from /kanban.js) can update itself.
 const INSTALLED = SERVED_FROM.startsWith("http");
-const DEFAULT_ORIGIN =
-  process.env.KANBAN_ORIGIN || (SERVED_FROM.startsWith("http") ? SERVED_FROM : "https://kanban.infopanel.org");
+// The server this copy came from, on its new host if the app has moved since.
+const HOME_ORIGIN = INSTALLED ? currentUrl(new URL(SERVED_FROM)).origin : ORIGIN;
+const DEFAULT_ORIGIN = process.env.KANBAN_ORIGIN || HOME_ORIGIN;
 
 interface Config {
   project: string;
@@ -575,8 +577,8 @@ const commands: Record<string, Command> = {
 
   async upgrade() {
     if (!INSTALLED) throw new CliError("This copy of kanban wasn't downloaded from a server, so it can't update itself.");
-    const res = await selfUpdate(SERVED_FROM, VERSION, process.env).catch((err: Error) => {
-      throw new CliError(`Couldn't update: ${err.message}. Try: curl -fsSL ${SERVED_FROM}/install | sh`);
+    const res = await selfUpdate(HOME_ORIGIN, VERSION, process.env).catch((err: Error) => {
+      throw new CliError(`Couldn't update: ${err.message}. Try: curl -fsSL ${HOME_ORIGIN}/install | sh`);
     });
     if (!res.updated) return out(`kanban ${VERSION} is the latest version.`);
     out(success(st, `Updated kanban ${res.from} → ${res.to}`));
@@ -647,7 +649,7 @@ async function main() {
 async function autoUpdate() {
   if (!INSTALLED || !shouldAutoCheck(process.env, readLastCheck(process.env), Date.now())) return;
   try {
-    const res = await selfUpdate(SERVED_FROM, VERSION, process.env);
+    const res = await selfUpdate(HOME_ORIGIN, VERSION, process.env);
     if (!res.updated) return;
     // stderr, so --json output on stdout stays parseable.
     process.stderr.write(`${errStyle.dim(`kanban updated itself ${res.from} → ${res.to}. Set KANBAN_NO_UPDATE=1 to turn this off.`)}\n`);

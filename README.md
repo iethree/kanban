@@ -19,7 +19,7 @@ a single dependency-free file that runs on Node 18+ or Bun.
 ### Install
 
 ```sh
-curl -fsSL https://kanban.infopanel.org/install | sh
+curl -fsSL https://kban.dev/install | sh
 ```
 
 This installs `kanban` to `~/.local/bin` (set `KANBAN_INSTALL_DIR` to change it) and checks that it runs
@@ -34,7 +34,7 @@ the installer does and says so on stderr. Run `kanban upgrade` to update right a
 
 ```sh
 kanban new "Website relaunch"                  # create a project and link this directory
-kanban init https://kanban.infopanel.org/p/website-relaunch/<id>   # or link an existing one
+kanban init https://kban.dev/p/website-relaunch/<id>   # or link an existing one
 ```
 
 Both write a `.kanban` file in the current directory, and later commands find it by walking up from
@@ -42,7 +42,7 @@ wherever you run them (like `.git`). The file holds the project link, which is a
 the board, so don't commit it to a public repository.
 
 ```json
-{ "project": "https://kanban.infopanel.org/p/website-relaunch/<id>", "agent": "claude" }
+{ "project": "https://kban.dev/p/website-relaunch/<id>", "agent": "claude" }
 ```
 
 `agent` is optional; it names you on claims and progress notes. `key` holds the key of a protected
@@ -222,8 +222,18 @@ bunx wrangler login
 bun run deploy
 ```
 
-Deploys to https://kanban.infopanel.org as a Workers custom domain (see `routes` in
-`wrangler.jsonc`). The `infopanel.org` zone must be on the same Cloudflare account.
+Deploys to https://kban.dev as a Workers custom domain (see `routes` in `wrangler.jsonc`). The
+`kban.dev` and `infopanel.org` zones must be on the same Cloudflare account.
+
+The app used to live on https://kanban.infopanel.org, which still points at the Worker and forwards
+everything to kban.dev (`src/worker/moved.ts`):
+
+- API calls, the installer and the CLI download get a `308` redirect, which keeps the method and body.
+  The CLI also reads old URLs in `.kanban` files as kban.dev, and old installs update to a copy that
+  uses kban.dev.
+- A browser opening a page first hands the keys it saved on the old host to kban.dev (in a `POST`
+  body, never in a URL), because saved keys belong to one origin.
+- WebSockets are still served on the old host, so tabs opened before the move keep working.
 
 ## How it works
 

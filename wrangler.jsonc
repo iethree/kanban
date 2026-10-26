@@ -4,9 +4,13 @@
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
-  // Requires the infopanel.org zone to be on the same Cloudflare account.
-  // Wrangler creates the DNS record and certificate on deploy.
-  "routes": [{ "pattern": "kanban.infopanel.org", "custom_domain": true }],
+  // Requires the kban.dev and infopanel.org zones to be on the same Cloudflare account.
+  // Wrangler creates the DNS records and certificates on deploy.
+  // kanban.infopanel.org is the old host: the Worker forwards it to kban.dev (see src/worker/moved.ts).
+  "routes": [
+    { "pattern": "kban.dev", "custom_domain": true },
+    { "pattern": "kanban.infopanel.org", "custom_domain": true }
+  ],
   // The frontend is bundled by Bun into ./dist before every dev/deploy.
   "build": {
     "command": "bun run build:client",
@@ -16,7 +20,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/", "/api/*", "/llms.txt", "/robots.txt", "/p/*", "/install", "/kanban.js", "/kanban.version"]
+    "run_worker_first": ["/", "/api/*", "/llms.txt", "/robots.txt", "/p/*", "/install", "/kanban.js", "/kanban.version", "/moved"]
   },
   "durable_objects": {
     "bindings": [{ "name": "PROJECTS", "class_name": "ProjectRoom" }]

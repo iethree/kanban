@@ -3,6 +3,7 @@
  * resolution and output formatting. Kept free of I/O so it can be unit tested.
  */
 import type { ActivityEntry } from "../shared/activity";
+import { currentUrl } from "../shared/domains";
 import { toProjectUuid, toShortId } from "../shared/ids";
 import { PRIORITIES, SIZES, type Card, type Priority, type Size } from "../shared/types";
 import { parseProjectPath, projectPath } from "../shared/urls";
@@ -84,11 +85,11 @@ export interface ProjectRef {
   key?: string;
 }
 
-/** Accepts a page URL, an API URL, a short id or a UUID. */
+/** Accepts a page URL, an API URL, a short id or a UUID. URLs on a host the app moved from point at its new one. */
 export function parseProjectRef(ref: string, defaultOrigin: string): ProjectRef {
   const value = ref.trim();
   if (/^https?:\/\//i.test(value)) {
-    const url = new URL(value);
+    const url = currentUrl(new URL(value));
     const api = url.pathname.match(/^\/api\/p\/([^/]+)/);
     const uuid = api ? toProjectUuid(api[1]!) : parseProjectPath(url.pathname)?.id;
     if (!uuid) throw new CliError(`Couldn't find a project id in ${value}`, 2);

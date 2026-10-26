@@ -3,6 +3,7 @@ import { toProjectUuid } from "../shared/ids";
 import { CLI_VERSION } from "../shared/cli-version";
 import { installScript, serveCli } from "./cli";
 import { rootLlmsTxt } from "./llms";
+import { HANDOVER_PATH, fromMovedHost, receiveHandover } from "./moved";
 import { agentLinks, prefersMarkdown, rewriteHomePage, rewriteProjectPage } from "./pages";
 
 export { ProjectRoom } from "./project-room";
@@ -36,7 +37,7 @@ function withPrivacyHeaders(res: Response, pathname: string): Response {
   // WebSocket upgrades can't be rebuilt, and carry nothing to index anyway.
   if (res.status === 101) return res;
   const headers = new Headers(res.headers);
-  headers.set("Referrer-Policy", "same-origin");
+  if (!headers.has("Referrer-Policy")) headers.set("Referrer-Policy", "same-origin");
   if (pathname.startsWith("/p/") || pathname.startsWith("/api/")) headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
@@ -49,7 +50,11 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 async function route(request: Request, env: Env): Promise<Response> {
+  const moved = fromMovedHost(request);
+  if (moved) return moved;
+
   const url = new URL(request.url);
+  if (url.pathname === HANDOVER_PATH) return receiveHandover(request);
 
   if (url.pathname === "/robots.txt") {
     return new Response(ROBOTS_TXT, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
