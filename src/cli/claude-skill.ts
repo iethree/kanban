@@ -3,7 +3,7 @@ export function claudeSkill(origin: string): string {
   return `---
 name: kban
 description: Work through the kanban board linked in this repository's .kban (or .kanban) file. Use when the user runs /kban next, or asks you to work through, pick up or check the cards on their kanban board.
-argument-hint: "next [instructions, e.g. commit and deploy each card]"
+argument-hint: "next [instructions, e.g. deploy each card]"
 ---
 
 # kban board
@@ -37,7 +37,10 @@ Do these steps for each card. Do not stop after the first card.
    \`kban log <number> "**Blocked:** <your question>"\`. Leave the card where it is and go back to step 1.
 5. Do the work. Obey the repository's instructions (for example CLAUDE.md or AGENTS.md) and match its
    conventions. Add or update tests, then run the tests and the type checks.
-6. Commit, push or deploy only if the arguments above or the repository's instructions tell you to.
+6. Make one commit for the card, before you start the next card. Put all of the card's changes, and no
+   changes for other cards, in that commit. Do not combine cards in one commit, and do not split a card into
+   several commits. If the arguments above or the repository's instructions tell you not to commit, do not.
+   Push or deploy only if the arguments above or the repository's instructions tell you to.
 7. When the work is complete and verified, run \`kban done <number> "<one line: what changed>"\`. In that
    line, give the commit hash, or say that the change is not committed. If you cannot finish the card, run
    \`kban log <number> "<what is done and what remains>"\` and leave the card in progress.
