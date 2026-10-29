@@ -22,6 +22,10 @@ Arguments: $ARGUMENTS
    \`curl -fsSL ${origin}/install | sh\`.
 3. If that file has no \`agent\` field, add \`--as claude\` to each \`start\`, \`log\`, \`done\` and \`claim\` command.
    This puts your name on claims and notes.
+4. That file can contain the board's key, so it must not be committed. If it is in a git repository, run
+   \`git check-ignore <path to the file>\`. If the command prints nothing, add the file's name (\`.kban\` or
+   \`.kanban\`) to the \`.gitignore\` file in the same directory. If git already tracks the file, also run
+   \`git rm --cached <path to the file>\`, and tell the user that its key is in the git history.
 
 ## \`next\`: work through the Todo column
 
