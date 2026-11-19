@@ -871,8 +871,7 @@ a.brand:hover {
   cursor: auto;
 }
 
-.editable.is-static:hover,
-div.md-field.is-static:hover {
+.editable.is-static:hover {
   background: none;
 }
 
@@ -2669,38 +2668,99 @@ button.add-column:hover:not(:disabled) {
   border-radius: 6px;
 }
 
-/* Rendered markdown that becomes a textarea on click. */
+/* Markdown edited in place (card descriptions and documents). */
 .md-field {
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: calc(100% + 16px);
   margin: 0 -8px;
   padding: 6px 8px;
   border-radius: 8px;
   cursor: text;
-  transition: background 0.1s;
 }
 
-div.md-field:hover {
-  background: var(--hover);
+/* The editor fills the field, so a click anywhere in it lands in the text. */
+.md-field > div {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
 }
 
-.md-placeholder {
-  color: var(--text-3);
-}
-
-.md-editor {
-  border: 0;
+.md-content {
+  flex: 1 0 auto;
   outline: 0;
-  resize: none;
-  /* Normally autosized to fit; if a layout ever caps its height, it scrolls instead of clipping. */
-  overflow-y: auto;
-  background: var(--surface);
-  box-shadow:
-    0 0 0 1px var(--border-strong),
-    0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.65;
+}
+
+.md-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.md-content ul[data-type="taskList"] {
+  padding-left: 0.2em;
+}
+
+.md-content ul[data-type="taskList"] > li {
+  display: flex;
+  gap: 0.5em;
+  list-style: none;
+}
+
+.md-content ul[data-type="taskList"] > li > label {
+  flex: none;
+  user-select: none;
+}
+
+.md-content ul[data-type="taskList"] > li > label input {
+  margin: 0;
+  vertical-align: -0.1em;
+  accent-color: var(--text);
+  cursor: pointer;
+}
+
+.md-content ul[data-type="taskList"] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.md-content li[data-checked="true"] > div > p {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.md-content ul[data-type="taskList"] > li > div > :last-child {
+  margin-bottom: 0;
+}
+
+.md-content li > p {
+  margin: 0;
+}
+
+.md-content :is(img, hr).ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.md-content .selectedCell {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.md-content .tableWrapper {
+  max-width: 100%;
+  margin: 0 0 0.8em;
+  overflow-x: auto;
+}
+
+.md-content .tableWrapper table {
+  display: table;
+  margin: 0;
+}
+
+.md-field.is-static .md-content ul[data-type="taskList"] > li > label input {
+  cursor: auto;
 }
 
 /* -------------------------------------------------------------------- tabs */

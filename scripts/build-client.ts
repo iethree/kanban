@@ -7,6 +7,8 @@ const result = await Bun.build({
   entrypoints: ["./src/client/index.html"],
   outdir: "./dist",
   minify: true,
+  // The Markdown editor is loaded on demand, in its own chunk.
+  splitting: true,
   publicPath: "/",
   env: "disable",
   // Fonts are copied in below rather than inlined into the CSS as data URIs.

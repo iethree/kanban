@@ -1,9 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useReadOnly } from "../lib/readonly";
-import { useRemoteDraft } from "../lib/useRemoteDraft";
-import { useAutosize } from "./ui";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -24,87 +22,43 @@ export function Markdown({ source, className = "" }: { source: string; className
   return <div className={`markdown ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-/**
- * Rendered Markdown that turns into a plain textarea when clicked, and back
- * when it loses focus. Edits are committed while typing (debounced) and on blur.
- */
-export function MarkdownField({
-  value,
-  onCommit,
-  placeholder,
-  ariaLabel,
-  maxLength,
-  className = "",
-  startEditing = false,
-}: {
+export type MarkdownFieldProps = {
   value: string;
   onCommit: (value: string) => void;
   placeholder: string;
   ariaLabel: string;
   maxLength?: number;
   className?: string;
-  startEditing?: boolean;
-}) {
-  const [editing, setEditing] = useState(startEditing);
-  const draft = useRemoteDraft(value, onCommit);
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useAutosize(ref, editing ? draft.value : "");
+};
+
+// The editor is most of the app's code, so it loads after the board instead of before it.
+const loadEditor = () => import("./MarkdownEditor");
+const MarkdownEditor = lazy(() => loadEditor().then((m) => ({ default: m.MarkdownEditor })));
+if (typeof window !== "undefined") (window.requestIdleCallback ?? setTimeout)(() => void loadEditor());
+
+/**
+ * Markdown edited in place, formatted as you type. Until the editor has loaded, the text is
+ * shown rendered, laid out the same way, so nothing moves when the editor takes over.
+ */
+export function MarkdownField(props: MarkdownFieldProps) {
   const readOnly = useReadOnly();
-
-  if (readOnly) {
-    return value ? (
-      <div className={`md-field is-static ${className}`}>
-        <Markdown source={value} />
+  if (readOnly && !props.value) return null;
+  const fallback = (
+    <div className={`md-field ${props.className ?? ""}${readOnly ? " is-static" : ""}`}>
+      <div>
+        {props.value ? (
+          <Markdown source={props.value} className="md-content" />
+        ) : (
+          <div className="markdown md-content">
+            <p className="is-editor-empty" data-placeholder={props.placeholder} />
+          </div>
+        )}
       </div>
-    ) : null;
-  }
-
-  if (!editing) {
-    return (
-      <div
-        className={`md-field ${className}${value ? "" : " is-empty"}`}
-        tabIndex={0}
-        role="group"
-        aria-label={`${ariaLabel}. Press Enter to edit.`}
-        onClick={(e) => {
-          // Let links and task-list checkboxes behave normally; don't steal text selections.
-          if ((e.target as HTMLElement).closest("a, input")) return;
-          if (window.getSelection()?.toString()) return;
-          setEditing(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && e.target === e.currentTarget) {
-            e.preventDefault();
-            setEditing(true);
-          }
-        }}
-      >
-        {value ? <Markdown source={value} /> : <span className="md-placeholder">{placeholder}</span>}
-      </div>
-    );
-  }
-
+    </div>
+  );
   return (
-    <textarea
-      ref={ref}
-      autoFocus
-      className={`md-field md-editor ${className}`}
-      placeholder={`${placeholder} Markdown is supported.`}
-      aria-label={ariaLabel}
-      maxLength={maxLength}
-      {...draft}
-      onBlur={() => {
-        draft.onBlur();
-        setEditing(false);
-      }}
-      onKeyDown={(e) => {
-        // Escape leaves edit mode instead of closing the surrounding dialog.
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          e.currentTarget.blur();
-        }
-      }}
-    />
+    <Suspense fallback={fallback}>
+      <MarkdownEditor {...props} />
+    </Suspense>
   );
 }
