@@ -1,21 +1,10 @@
-import { lazy, Suspense, useMemo } from "react";
-import DOMPurify from "dompurify";
-import { marked } from "marked";
+import { Component, lazy, Suspense, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReadOnly } from "../lib/readonly";
+import { renderMarkdown } from "../lib/render-markdown";
+import { useRemoteDraft } from "../lib/useRemoteDraft";
+import { useAutosize } from "./ui";
 
-marked.setOptions({ gfm: true, breaks: true });
-
-// Anyone with a project link can edit it, so rendered HTML must be sanitized.
-DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-  if (node.tagName === "A" && node.getAttribute("href")) {
-    node.setAttribute("target", "_blank");
-    node.setAttribute("rel", "noopener noreferrer");
-  }
-});
-
-export function renderMarkdown(source: string): string {
-  return DOMPurify.sanitize(marked.parse(source, { async: false }));
-}
+export { renderMarkdown };
 
 export function Markdown({ source, className = "" }: { source: string; className?: string }) {
   const html = useMemo(() => renderMarkdown(source), [source]);
@@ -38,7 +27,8 @@ if (typeof window !== "undefined") (window.requestIdleCallback ?? setTimeout)(()
 
 /**
  * Markdown edited in place, formatted as you type. Until the editor has loaded, the text is
- * shown rendered, laid out the same way, so nothing moves when the editor takes over.
+ * shown rendered, laid out the same way, so nothing moves when the editor takes over. If the
+ * editor can't load, the field edits the Markdown source instead.
  */
 export function MarkdownField(props: MarkdownFieldProps) {
   const readOnly = useReadOnly();
@@ -57,8 +47,109 @@ export function MarkdownField(props: MarkdownFieldProps) {
     </div>
   );
   return (
-    <Suspense fallback={fallback}>
-      <MarkdownEditor {...props} />
-    </Suspense>
+    <EditorBoundary fallback={<MarkdownSourceField {...props} />}>
+      <Suspense fallback={fallback}>
+        <MarkdownEditor {...props} />
+      </Suspense>
+    </EditorBoundary>
+  );
+}
+
+class EditorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  override componentDidCatch(error: unknown) {
+    console.error("The Markdown editor failed; editing the Markdown source instead.", error);
+  }
+  override render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+/**
+ * Rendered Markdown that turns into a plain textarea of its source when clicked, and back when
+ * it loses focus. Used for text the inline editor can't edit without changing it, and if the
+ * editor fails to load. Edits are committed while typing (debounced) and on blur.
+ */
+export function MarkdownSourceField({
+  value,
+  onCommit,
+  placeholder,
+  ariaLabel,
+  maxLength,
+  className = "",
+  note,
+}: MarkdownFieldProps & { note?: string }) {
+  const [editing, setEditing] = useState(false);
+  const draft = useRemoteDraft(value, onCommit);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useAutosize(ref, editing ? draft.value : "");
+  const readOnly = useReadOnly();
+
+  if (readOnly) {
+    return value ? (
+      <div className={`md-field md-source is-static ${className}`}>
+        <Markdown source={value} />
+      </div>
+    ) : null;
+  }
+
+  const noteLine = note ? <p className="md-source-note">{note}</p> : null;
+
+  if (!editing) {
+    return (
+      <div className={`md-source-wrap ${className}`}>
+        <div
+          className={`md-field md-source${value ? "" : " is-empty"}`}
+          tabIndex={0}
+          role="group"
+          aria-label={`${ariaLabel}. Press Enter to edit.`}
+          onClick={(e) => {
+            // Let links and task-list checkboxes behave normally; don't steal text selections.
+            if ((e.target as HTMLElement).closest("a, input")) return;
+            if (window.getSelection()?.toString()) return;
+            setEditing(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && e.target === e.currentTarget) {
+              e.preventDefault();
+              setEditing(true);
+            }
+          }}
+        >
+          {value ? <Markdown source={value} /> : <span className="md-placeholder">{placeholder}</span>}
+        </div>
+        {noteLine}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`md-source-wrap ${className}`}>
+      <textarea
+        ref={ref}
+        autoFocus
+        className="md-field md-source md-editor"
+        placeholder={`${placeholder} Markdown is supported.`}
+        aria-label={ariaLabel}
+        maxLength={maxLength}
+        {...draft}
+        onBlur={() => {
+          draft.onBlur();
+          setEditing(false);
+        }}
+        onKeyDown={(e) => {
+          // Escape leaves edit mode instead of closing the surrounding dialog.
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      {noteLine}
+    </div>
   );
 }

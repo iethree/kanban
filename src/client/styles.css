@@ -2763,6 +2763,63 @@ button.add-column:hover:not(:disabled) {
   cursor: auto;
 }
 
+/* Markdown source, edited in a textarea: for text the inline editor can't keep exactly. */
+.md-source-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.md-source-wrap > .md-field {
+  display: block;
+  flex: 1 0 auto;
+}
+
+div.md-source {
+  transition: background 0.1s;
+}
+
+div.md-source:hover {
+  background: var(--hover);
+}
+
+div.md-source.is-static:hover {
+  background: none;
+}
+
+.md-placeholder {
+  color: var(--text-3);
+}
+
+.md-editor {
+  border: 0;
+  outline: 0;
+  resize: none;
+  /* Normally autosized to fit; if a layout ever caps its height, it scrolls instead of clipping. */
+  overflow-y: auto;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.md-source-note {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.md-source-note.is-error {
+  color: var(--danger);
+}
+
+/* Links open with Cmd/Ctrl+click while editing, and with a plain click when read-only. */
+.md-field.is-static .md-content a {
+  cursor: pointer;
+}
+
 /* -------------------------------------------------------------------- tabs */
 
 /* A segmented control that sits to the right of the project title. */

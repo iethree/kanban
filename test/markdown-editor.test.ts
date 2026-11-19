@@ -96,6 +96,42 @@ describe("the editor's Markdown", () => {
     expect(roundTrip("")).toBe("");
   });
 
+  test("text that starts like a block (heading, list, quote, rule) stays text", () => {
+    for (const text of ["# not a heading", "- not a list", "1986. A great year", "> not a quote", "---", "a | b"]) {
+      const editor = load("");
+      editor.commands.insertContent({ type: "paragraph", content: [{ type: "text", text }] });
+      const md = lib.editorMarkdown(editor);
+      expect(lib.sameContent(editor.getJSON(), editor.markdown!.parse(md))).toBe(true);
+    }
+    expect(lib.escapeLineStarts("Title\n===\n- x\n    code")).toBe(String.raw`Title
+\===
+\- x
+code`);
+  });
+
+  test("code containing fences gets a longer fence", () => {
+    expect(lib.fenceCode("```\ninside\n```", "md")).toBe("````md\n```\ninside\n```\n````");
+    expect(roundTrip("~~~\n```\ninside\n```\n~~~")).toBe("````\n```\ninside\n```\n````");
+  });
+
+  test("links and images keep destinations, titles and alt text that need escaping", () => {
+    for (const md of ["[x](<https://a.com/a)b>)", "[l](<a b.md>)", String.raw`[t](https://x.com "say \"hi\"")`, String.raw`![a \] b](x.png)`]) {
+      expect(roundTrip(md)).toBe(md);
+    }
+  });
+
+  test("a line break in a heading or table cell is written as <br>", () => {
+    const editor = load("");
+    editor.commands.insertContent({
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "one" }, { type: "hardBreak" }, { type: "text", text: "two" }],
+    });
+    const md = lib.editorMarkdown(editor);
+    expect(md).toBe("## one<br>two");
+    expect(lib.editsSafely(md, roundTrip(md))).toBe(true);
+  });
+
   test("literal Markdown characters are escaped so they read back as typed", () => {
     const editor = load("");
     editor.commands.focus();
@@ -103,3 +139,21 @@ describe("the editor's Markdown", () => {
     expect(lib.editorMarkdown(editor)).toBe(String.raw`plain text with \<tags> and \*\*stars\*\*`);
   });
 });
+
+describe("editsSafely", () => {
+  const safe = (md: string) => lib.editsSafely(md, roundTrip(md));
+
+  test("accepts what the editor writes back faithfully", () => {
+    expect(safe("# Plan\n\n- [ ] one\n- [x] two\n\nSome **bold** text.")).toBe(true);
+    // A loose list comes back tight: the same items, only the spacing differs.
+    expect(safe("- a\n\n- b")).toBe(true);
+  });
+
+  test("rejects text the editor would change or drop", () => {
+    expect(safe("Replace the <select> with a <button>.")).toBe(false);
+    expect(safe("Status: done\n\n<!-- agent: last-run=3 -->")).toBe(false);
+    expect(safe("&copy; 2026")).toBe(false);
+    expect(safe("1. a\n\n   ```\n   x\n   ```")).toBe(false);
+  });
+});
+
