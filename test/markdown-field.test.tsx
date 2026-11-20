@@ -127,3 +127,53 @@ test("text too long to save is kept on screen, not saved cut short", async () =>
   expect(field.container.querySelector("[role=alert]")?.textContent).toContain("Not saved");
   await field.unmount();
 });
+
+test("a remote change that arrives mid-edit is shown on blur, even in a text with a link", async () => {
+  const field = mount("Plan, see [spec](https://x.com/spec)");
+  await tick();
+  const editor = field.editor()!;
+  editor.commands.focus("end");
+  await tick();
+  editor.commands.insertContent(" (mine)");
+  await act(() => new Promise((r) => setTimeout(r, 600))); // autosave
+  expect(field.commits).toEqual(["Plan, see [spec](https://x.com/spec) (mine)"]);
+  field.render("Plan, see [spec](https://x.com/spec) (mine)\n\nTeammate's new paragraph");
+  await tick();
+  editor.commands.blur();
+  await tick();
+  expect(editor.getText()).toContain("Teammate's new paragraph");
+  expect(field.commits).toHaveLength(1);
+  await field.unmount();
+});
+
+test("Undo survives a blur", async () => {
+  const field = mount("see [spec](https://x.com)");
+  await tick();
+  const editor = field.editor()!;
+  editor.commands.focus("end");
+  await tick();
+  editor.commands.insertContent(" more");
+  editor.commands.blur();
+  await tick();
+  editor.commands.focus();
+  await tick();
+  editor.commands.undo();
+  expect(editor.getText()).toBe("see spec");
+  await field.unmount();
+});
+
+test("text too long to save is not replaced by a remote change or a blur", async () => {
+  const field = mount("see [spec](https://x.com)", 30);
+  await tick();
+  const editor = field.editor()!;
+  editor.commands.focus("end");
+  await tick();
+  editor.commands.insertContent(" and then a great deal more");
+  editor.commands.blur();
+  await tick();
+  field.render("someone else's text");
+  await tick();
+  expect(editor.getText()).toContain("a great deal more");
+  expect(field.commits).toEqual([]);
+  await field.unmount();
+});

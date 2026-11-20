@@ -10,7 +10,8 @@ import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import Paragraph from "@tiptap/extension-paragraph";
-import { TableKit } from "@tiptap/extension-table";
+import { TableCell, TableHeader, TableKit } from "@tiptap/extension-table";
+import Heading from "@tiptap/extension-heading";
 import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
 import { Marked, marked } from "marked";
@@ -23,6 +24,7 @@ export function markdownExtensions({ placeholder = "" }: { placeholder?: string 
   const extensions: AnyExtension[] = [
     StarterKit.configure({
       paragraph: false,
+      heading: false,
       codeBlock: false,
       hardBreak: false,
       link: false,
@@ -33,6 +35,13 @@ export function markdownExtensions({ placeholder = "" }: { placeholder?: string 
       renderMarkdown(node, h, ctx) {
         const parent = this.parent as unknown as (n: typeof node, hh: typeof h, c: typeof ctx) => string;
         return escapeLineStarts(parent(node, h, ctx));
+      },
+    }),
+    Heading.extend({
+      renderMarkdown(node, h, ctx) {
+        const parent = this.parent as unknown as (n: typeof node, hh: typeof h, c: typeof ctx) => string;
+        // A run of # at the end of a heading is read as its closing sequence and dropped.
+        return parent(node, h, ctx).replace(/(\s)(#+\s*)$/, "$1\\$2");
       },
     }),
     CodeBlock.extend({
@@ -51,6 +60,8 @@ export function markdownExtensions({ placeholder = "" }: { placeholder?: string 
       renderMarkdown(node, h) {
         return `[${h.renderChildren(node)}](${linkTarget(attr(node.attrs, "href"), attr(node.attrs, "title"))})`;
       },
+      // Typing at the end of a link continues the text after it, not the link.
+      inclusive: () => false,
     }).configure({
       // A plain click edits the link text. Cmd/Ctrl+click opens it (see LinkClick).
       openOnClick: false,
@@ -60,7 +71,11 @@ export function markdownExtensions({ placeholder = "" }: { placeholder?: string 
     }),
     TaskList,
     TaskItem.configure({ nested: true }),
-    TableKit,
+    // A Markdown table cell holds one line of inline text: no code blocks or lists, which it
+    // couldn't save.
+    TableKit.configure({ tableCell: false, tableHeader: false }),
+    TableCell.extend({ content: "paragraph" }),
+    TableHeader.extend({ content: "paragraph" }),
     Image.extend({
       renderMarkdown(node) {
         const alt = attr(node.attrs, "alt").replace(/[\\[\]]/g, "\\$&");
@@ -160,10 +175,9 @@ const MarkdownText = Extension.create({
 });
 
 /**
- * Pasting plain text (from a terminal, an editor or an agent) parses it as Markdown, if the
- * editor can keep all of it. Otherwise it is pasted as plain text. Rich text from a web page or
- * a document keeps its formatting, but VS Code's HTML copy is only syntax colouring, so its
- * plain text is used.
+ * Pasting plain text (from a terminal or an agent) parses it as Markdown, if the editor can keep
+ * all of it. Otherwise it is pasted as plain text. Anything copied with HTML (a web page, a
+ * document, a code editor) is pasted as that HTML.
  */
 const MarkdownPaste = Extension.create({
   name: "markdownPaste",
@@ -177,7 +191,7 @@ const MarkdownPaste = Extension.create({
             const data = event.clipboardData;
             const manager = editor.markdown;
             if (!data || !manager) return false;
-            if (data.types.includes("text/html") && !data.types.includes("vscode-editor-data")) return false;
+            if (data.types.includes("text/html")) return false;
             const text = data.getData("text/plain");
             if (!text || editor.isActive("codeBlock")) return false;
             const doc = manager.parse(text);
@@ -245,14 +259,29 @@ export function tidyMarkdown(md: string): string {
  * don't render but can matter to whoever wrote them), and both render the same.
  */
 export function editsSafely(original: string, serialized: string): boolean {
-  return original === serialized || (!hasRawHtml(original) && sameRendering(original, serialized));
+  return original === serialized || (!hasHiddenContent(original) && sameRendering(original, serialized));
 }
 
-/** Whether Markdown contains raw HTML, other than the <br> the editor writes itself. */
-export function hasRawHtml(md: string): boolean {
+/**
+ * Whether Markdown has content that doesn't show when rendered, so the rendering check can't
+ * see the editor dropping it: raw HTML (comments, tags the editor doesn't know) other than the
+ * <br> the editor writes itself, link reference definitions (`[//]: # (a comment)`), front
+ * matter, and table rows with more cells than the header.
+ */
+export function hasHiddenContent(md: string): boolean {
+  if (/^---[ \t]*\r?\n[\s\S]*?\r?\n(---|\.\.\.)[ \t]*(\r?\n|$)/.test(md)) return true;
+  const tokens = marked.lexer(md);
+  if (Object.keys(tokens.links ?? {}).length > 0) return true;
   let found = false;
-  marked.walkTokens(marked.lexer(md), (token) => {
+  marked.walkTokens(tokens, (token) => {
     if (token.type === "html" && !/^<br\s*\/?>$/i.test(token.raw.trim())) found = true;
+    if (token.type === "table") {
+      const widths = token.raw
+        .trim()
+        .split("\n")
+        .map((line) => line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "").split(/(?<!\\)\|/).length);
+      if (widths.some((w) => w > widths[0]!)) found = true;
+    }
   });
   return found;
 }
@@ -280,8 +309,11 @@ function normalizeHtml(html: string): string {
  * Whether two documents have the same content, ignoring whitespace that Markdown doesn't keep
  * and empty paragraphs. Used to check that what was saved reads back as what is on screen.
  */
-export function sameContent(a: JSONContent, b: JSONContent): boolean {
-  return JSON.stringify(signature(a)) === JSON.stringify(signature(b));
+export function sameContent(editor: Editor, md: string): boolean {
+  if (!editor.markdown) return true;
+  // Through the schema, so both sides have every attribute, defaults included.
+  const saved = editor.schema.nodeFromJSON(editor.markdown.parse(md)).toJSON() as JSONContent;
+  return JSON.stringify(signature(editor.getJSON())) === JSON.stringify(signature(saved));
 }
 
 function signature(node: JSONContent): unknown {

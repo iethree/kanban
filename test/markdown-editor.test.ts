@@ -101,7 +101,7 @@ describe("the editor's Markdown", () => {
       const editor = load("");
       editor.commands.insertContent({ type: "paragraph", content: [{ type: "text", text }] });
       const md = lib.editorMarkdown(editor);
-      expect(lib.sameContent(editor.getJSON(), editor.markdown!.parse(md))).toBe(true);
+      expect(lib.sameContent(editor, md)).toBe(true);
     }
     expect(lib.escapeLineStarts("Title\n===\n- x\n    code")).toBe(String.raw`Title
 \===
@@ -157,3 +157,54 @@ describe("editsSafely", () => {
   });
 });
 
+
+describe("round-two review regressions", () => {
+  test("what the editor saves reads back as the same content, for every kind of node", () => {
+    const md = [
+      "# Plan #2 \\#",
+      "",
+      "See [spec](https://x.com/spec) and ![img](a.png).",
+      "",
+      "3. three",
+      "4. four",
+      "",
+      "- [ ] task",
+      "",
+      "| a | b |",
+      "|---|---|",
+      "| 1 | 2 |",
+      "",
+      "```js",
+      "x",
+      "```",
+    ].join("\n");
+    const editor = load(md);
+    expect(lib.sameContent(editor, lib.editorMarkdown(editor))).toBe(true);
+  });
+
+  test("content that doesn't render is never handed to the editor", () => {
+    const safe = (md: string) => lib.editsSafely(md, roundTrip(md));
+    expect(safe("Status: done\n\n[//]: # (agent: last-run=3)")).toBe(false);
+    expect(safe("See [the spec][spec].\n\n[spec]: https://x.com")).toBe(false);
+    expect(safe("---\ntitle: Plan\nowner: agent-7\n---\n\nBody")).toBe(false);
+    expect(safe("| a | b |\n|---|---|\n| 1 | 2 | 3 |")).toBe(false);
+    expect(safe("| a \\| b | c |\n|---|---|\n| 1 | 2 |")).toBe(true);
+  });
+
+  test("a heading ending in # keeps it", () => {
+    expect(roundTrip("## Issue \\#")).toBe("## Issue \\#");
+  });
+
+  test("a table cell can't hold a code block or a list", () => {
+    const editor = load("| a | b |\n|---|---|\n| 1 | 2 |");
+    expect(editor.schema.nodes.tableCell!.spec.content).toBe("paragraph");
+    expect(editor.schema.nodes.tableHeader!.spec.content).toBe("paragraph");
+  });
+
+  test("typing after a link doesn't extend it", () => {
+    const editor = load("see [spec](https://x.com)");
+    editor.commands.focus("end");
+    editor.commands.insertContent(" ok");
+    expect(lib.editorMarkdown(editor)).toBe("see [spec](https://x.com) ok");
+  });
+});

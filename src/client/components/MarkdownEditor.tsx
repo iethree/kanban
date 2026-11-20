@@ -30,8 +30,10 @@ export function MarkdownEditor(props: MarkdownFieldProps) {
     commit: onCommit,
     maxLength,
     source: false,
-    /** Set when what was saved doesn't read back as what is on screen. */
-    reloadOnBlur: false,
+    /** Set by a commit: on blur, check that what was saved reads back as what is on screen. */
+    checkOnBlur: false,
+    /** Set while the field holds an edit too long to save: nothing may replace it. */
+    unsaved: false,
     timer: undefined as ReturnType<typeof setTimeout> | undefined,
   }).current;
   sync.remote = value;
@@ -48,25 +50,21 @@ export function MarkdownEditor(props: MarkdownFieldProps) {
     clearTimeout(sync.timer);
     if (editor.isDestroyed || sync.source) return false;
     const md = editorMarkdown(editor);
-    if (md === sync.baseline) {
-      setTooLong(null);
-      return false;
-    }
     // The server would cut it short. Keep the edit on screen, unsaved, and say so.
-    if (sync.maxLength && md.length > sync.maxLength) {
-      setTooLong(md.length);
-      return false;
-    }
-    setTooLong(null);
+    sync.unsaved = md !== sync.baseline && !!sync.maxLength && md.length > sync.maxLength;
+    setTooLong(sync.unsaved ? md.length : null);
+    if (md === sync.baseline || sync.unsaved) return false;
     sync.baseline = sync.loaded = md;
     sync.commit(md);
-    if (editor.markdown && !sameContent(editor.getJSON(), editor.markdown.parse(md))) sync.reloadOnBlur = true;
+    sync.checkOnBlur = true;
     return true;
   };
 
   const load = (editor: Editor, md: string) => {
     editor.commands.setContent(md, { contentType: "markdown", emitUpdate: false });
     resetHistory(editor);
+    sync.unsaved = false;
+    setTooLong(null);
     sync.loaded = md;
     sync.baseline = editorMarkdown(editor);
     sync.baselineOf = editor;
@@ -102,13 +100,13 @@ export function MarkdownEditor(props: MarkdownFieldProps) {
       },
       onBlur: ({ editor }) => {
         const committed = flush(editor);
-        if (sync.reloadOnBlur) {
-          // Show what was really saved.
-          sync.reloadOnBlur = false;
-          load(editor, sync.loaded);
-        } else if (!committed && sync.remote !== sync.loaded) {
-          load(editor, sync.remote);
-        }
+        if (sync.unsaved) return;
+        // Checked here rather than on every save: it parses the whole text again.
+        const misread = sync.checkOnBlur && !sameContent(editor, sync.loaded);
+        sync.checkOnBlur = false;
+        // Show what was really saved: this commit if there was one, else the latest remote
+        // value, which includes any change that arrived while the field had focus.
+        if (misread || (!committed && sync.remote !== sync.loaded)) load(editor, committed ? sync.loaded : sync.remote);
       },
     },
     [extensions],
@@ -124,7 +122,7 @@ export function MarkdownEditor(props: MarkdownFieldProps) {
   const [source, setSource] = useState(() => sync.source);
 
   useEffect(() => {
-    if (!sync.source && value !== sync.loaded && !editor.isFocused) load(editor, value);
+    if (!sync.source && !sync.unsaved && value !== sync.loaded && !editor.isFocused) load(editor, value);
   }, [value, editor]);
 
   useEffect(() => {
